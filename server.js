@@ -379,6 +379,23 @@ app.get('/health', (req, res) => {
 });
 
 // ============================================
+// SERVIR ARCHIVOS ESTÁTICOS Y HTML
+// ============================================
+
+// Servir archivos estáticos desde la carpeta public
+app.use(express.static('public'));
+
+// Servir index.html en la raíz
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/public/index.html');
+});
+
+// Página 404
+app.use((req, res) => {
+    res.status(404).json({ error: 'Endpoint no encontrado' });
+});
+
+// ============================================
 // INICIAR SERVIDOR
 // ============================================
 
