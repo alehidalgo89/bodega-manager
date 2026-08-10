@@ -22,6 +22,218 @@ const pool = new pg.Pool({
 });
 
 // ============================================
+// INICIALIZAR BASE DE DATOS
+// ============================================
+
+app.get('/init-db', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        // Crear tablas
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS paises (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(100) UNIQUE NOT NULL,
+                codigo_iso VARCHAR(2) UNIQUE NOT NULL
+            );
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS regiones (
+                id SERIAL PRIMARY KEY,
+                pais_id INTEGER NOT NULL REFERENCES paises(id) ON DELETE CASCADE,
+                nombre VARCHAR(100) NOT NULL,
+                UNIQUE(pais_id, nombre)
+            );
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS tipos_vino (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(50) UNIQUE NOT NULL
+            );
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS zonas (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(5) UNIQUE NOT NULL,
+                columnas INTEGER NOT NULL,
+                filas INTEGER NOT NULL
+            );
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS ubicaciones (
+                id SERIAL PRIMARY KEY,
+                zona_id INTEGER NOT NULL REFERENCES zonas(id),
+                columna INTEGER NOT NULL,
+                fila INTEGER NOT NULL,
+                disponible BOOLEAN DEFAULT TRUE,
+                UNIQUE(zona_id, columna, fila)
+            );
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS vinos (
+                id SERIAL PRIMARY KEY,
+                codigo_qr VARCHAR(255) UNIQUE NOT NULL,
+                tipo_vino_id INTEGER NOT NULL REFERENCES tipos_vino(id),
+                pais_id INTEGER NOT NULL REFERENCES paises(id),
+                region_id INTEGER REFERENCES regiones(id),
+                bodega VARCHAR(150) NOT NULL,
+                ano INTEGER NOT NULL,
+                cantidad INTEGER NOT NULL DEFAULT 1,
+                cantidad_minima INTEGER DEFAULT 0,
+                ubicacion_id INTEGER REFERENCES ubicaciones(id),
+                estado VARCHAR(20) DEFAULT 'Disponible',
+                fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                notas TEXT
+            );
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS movimientos (
+                id SERIAL PRIMARY KEY,
+                vino_id INTEGER NOT NULL REFERENCES vinos(id),
+                tipo_movimiento VARCHAR(20) NOT NULL,
+                cantidad INTEGER NOT NULL,
+                fecha_movimiento TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                notas TEXT
+            );
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS configuracion (
+                id SERIAL PRIMARY KEY,
+                nombre_bodega VARCHAR(150) DEFAULT 'Bodega de Candinho',
+                columnas_por_zona TEXT,
+                filas_por_zona INTEGER DEFAULT 20,
+                fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        // Insertar tipos de vino
+        await client.query(`
+            INSERT INTO tipos_vino (nombre) VALUES ('Tinto'), ('Blanco'), ('Rosado')
+            ON CONFLICT (nombre) DO NOTHING;
+        `);
+
+        // Insertar países
+        const paises = [
+            ['Francia', 'FR'], ['Italia', 'IT'], ['España', 'ES'], ['Austria', 'AT'],
+            ['Croacia', 'HR'], ['Alemania', 'DE'], ['Portugal', 'PT'], ['Argentina', 'AR'],
+            ['Chile', 'CL'], ['Australia', 'AU'], ['Sudáfrica', 'ZA'], ['Nueva Zelanda', 'NZ'],
+            ['Estados Unidos', 'US'], ['Hungría', 'HU'], ['Rumania', 'RO']
+        ];
+
+        for (const [nombre, codigo] of paises) {
+            await client.query(
+                'INSERT INTO paises (nombre, codigo_iso) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [nombre, codigo]
+            );
+        }
+
+        // Insertar regiones de Francia
+        const frId = (await client.query('SELECT id FROM paises WHERE codigo_iso = $1', ['FR'])).rows[0].id;
+        const regionesFr = ['Champagne', 'Bordeaux', 'Burgundy', 'Loire', 'Alsace', 'Provence', 'Rhône'];
+        for (const region of regionesFr) {
+            await client.query(
+                'INSERT INTO regiones (pais_id, nombre) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [frId, region]
+            );
+        }
+
+        // Insertar regiones de Italia
+        const itId = (await client.query('SELECT id FROM paises WHERE codigo_iso = $1', ['IT'])).rows[0].id;
+        const regionesIt = ['Toscana', 'Piamonte', 'Venecia', 'Sicilia', 'Campania'];
+        for (const region of regionesIt) {
+            await client.query(
+                'INSERT INTO regiones (pais_id, nombre) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [itId, region]
+            );
+        }
+
+        // Insertar regiones de España
+        const esId = (await client.query('SELECT id FROM paises WHERE codigo_iso = $1', ['ES'])).rows[0].id;
+        const regionesEs = ['Rioja', 'Ribera del Duero', 'La Mancha', 'Penedès', 'Priorat'];
+        for (const region of regionesEs) {
+            await client.query(
+                'INSERT INTO regiones (pais_id, nombre) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [esId, region]
+            );
+        }
+
+        // Insertar regiones de Austria
+        const atId = (await client.query('SELECT id FROM paises WHERE codigo_iso = $1', ['AT'])).rows[0].id;
+        const regionesAt = ['Wachau', 'Danubio', 'Estiria'];
+        for (const region of regionesAt) {
+            await client.query(
+                'INSERT INTO regiones (pais_id, nombre) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [atId, region]
+            );
+        }
+
+        // Insertar regiones de Croacia
+        const hrId = (await client.query('SELECT id FROM paises WHERE codigo_iso = $1', ['HR'])).rows[0].id;
+        const regionesHr = ['Dalmacia', 'Istria', 'Panonia'];
+        for (const region of regionesHr) {
+            await client.query(
+                'INSERT INTO regiones (pais_id, nombre) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [hrId, region]
+            );
+        }
+
+        // Insertar zonas
+        const zonas = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'];
+        const columas_por_zona = { 'A1': 20, 'A2': 20, 'B1': 30, 'B2': 30, 'C1': 30, 'C2': 30, 'D1': 20, 'D2': 20 };
+
+        for (const zona of zonas) {
+            await client.query(
+                'INSERT INTO zonas (nombre, columnas, filas) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+                [zona, columas_por_zona[zona], 20]
+            );
+        }
+
+        // Generar ubicaciones
+        await client.query('DELETE FROM ubicaciones');
+        for (const zona of zonas) {
+            const zoneRow = await client.query('SELECT id FROM zonas WHERE nombre = $1', [zona]);
+            if (zoneRow.rows.length > 0) {
+                const zoneId = zoneRow.rows[0].id;
+                const cols = columas_por_zona[zona];
+                for (let col = 1; col <= cols; col++) {
+                    for (let fil = 1; fil <= 20; fil++) {
+                        await client.query(
+                            'INSERT INTO ubicaciones (zona_id, columna, fila, disponible) VALUES ($1, $2, $3, true) ON CONFLICT DO NOTHING',
+                            [zoneId, col, fil]
+                        );
+                    }
+                }
+            }
+        }
+
+        // Insertar configuración
+        await client.query(
+            'INSERT INTO configuracion (nombre_bodega, columnas_por_zona) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            ['Bodega de Candinho', 'A1:20,A2:20,B1:30,B2:30,C1:30,C2:30,D1:20,D2:20']
+        );
+
+        res.json({ 
+            success: true, 
+            message: 'Base de datos inicializada correctamente',
+            info: 'Tablas creadas, datos precargados, 4000 ubicaciones disponibles'
+        });
+    } catch (err) {
+        res.status(500).json({ 
+            success: false,
+            error: err.message 
+        });
+    } finally {
+        client.release();
+    }
+});
+
+// ============================================
 // RUTAS DE PAÍSES Y REGIONES
 // ============================================
 
@@ -359,197 +571,6 @@ app.get('/api/configuracion', async (req, res) => {
 
 app.get('/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-// ============================================
-// INICIALIZAR BASE DE DATOS
-// ============================================
-
-app.get('/init-db', async (req, res) => {
-    const client = await pool.connect();
-    try {
-        // Script SQL completo
-        const sql = `
--- Tabla de Países
-CREATE TABLE IF NOT EXISTS paises (
-    id SERIAL PRIMARY KEY,
-    nombre VARCHAR(100) UNIQUE NOT NULL,
-    codigo_iso VARCHAR(2) UNIQUE NOT NULL
-);
-
--- Tabla de Regiones
-CREATE TABLE IF NOT EXISTS regiones (
-    id SERIAL PRIMARY KEY,
-    pais_id INTEGER NOT NULL REFERENCES paises(id) ON DELETE CASCADE,
-    nombre VARCHAR(100) NOT NULL,
-    UNIQUE(pais_id, nombre)
-);
-
--- Tabla de Tipos de Vino
-CREATE TABLE IF NOT EXISTS tipos_vino (
-    id SERIAL PRIMARY KEY,
-    nombre VARCHAR(50) UNIQUE NOT NULL
-);
-
--- Tabla de Zonas
-CREATE TABLE IF NOT EXISTS zonas (
-    id SERIAL PRIMARY KEY,
-    nombre VARCHAR(5) UNIQUE NOT NULL,
-    columnas INTEGER NOT NULL,
-    filas INTEGER NOT NULL
-);
-
--- Tabla de Ubicaciones
-CREATE TABLE IF NOT EXISTS ubicaciones (
-    id SERIAL PRIMARY KEY,
-    zona_id INTEGER NOT NULL REFERENCES zonas(id),
-    columna INTEGER NOT NULL,
-    fila INTEGER NOT NULL,
-    disponible BOOLEAN DEFAULT TRUE,
-    UNIQUE(zona_id, columna, fila)
-);
-
--- Tabla de Vinos
-CREATE TABLE IF NOT EXISTS vinos (
-    id SERIAL PRIMARY KEY,
-    codigo_qr VARCHAR(255) UNIQUE NOT NULL,
-    tipo_vino_id INTEGER NOT NULL REFERENCES tipos_vino(id),
-    pais_id INTEGER NOT NULL REFERENCES paises(id),
-    region_id INTEGER REFERENCES regiones(id),
-    bodega VARCHAR(150) NOT NULL,
-    ano INTEGER NOT NULL,
-    cantidad INTEGER NOT NULL DEFAULT 1,
-    cantidad_minima INTEGER DEFAULT 0,
-    ubicacion_id INTEGER REFERENCES ubicaciones(id),
-    estado VARCHAR(20) DEFAULT 'Disponible',
-    fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    notas TEXT
-);
-
--- Tabla de Movimientos
-CREATE TABLE IF NOT EXISTS movimientos (
-    id SERIAL PRIMARY KEY,
-    vino_id INTEGER NOT NULL REFERENCES vinos(id),
-    tipo_movimiento VARCHAR(20) NOT NULL CHECK (tipo_movimiento IN ('Entrada', 'Salida')),
-    cantidad INTEGER NOT NULL,
-    fecha_movimiento TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    notas TEXT
-);
-
--- Tabla de Configuración
-CREATE TABLE IF NOT EXISTS configuracion (
-    id SERIAL PRIMARY KEY,
-    nombre_bodega VARCHAR(150) DEFAULT 'Bodega de Candinho',
-    columnas_por_zona TEXT,
-    filas_por_zona INTEGER DEFAULT 20,
-    fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Insertar Tipos de Vino
-INSERT INTO tipos_vino (nombre) VALUES ('Tinto'), ('Blanco'), ('Rosado') ON CONFLICT DO NOTHING;
-
--- Insertar Países
-INSERT INTO paises (nombre, codigo_iso) VALUES
-('Francia', 'FR'),
-('Italia', 'IT'),
-('España', 'ES'),
-('Austria', 'AT'),
-('Croacia', 'HR'),
-('Alemania', 'DE'),
-('Portugal', 'PT'),
-('Argentina', 'AR'),
-('Chile', 'CL'),
-('Australia', 'AU'),
-('Sudáfrica', 'ZA'),
-('Nueva Zelanda', 'NZ'),
-('Estados Unidos', 'US'),
-('Hungría', 'HU'),
-('Rumania', 'RO')
-ON CONFLICT DO NOTHING;
-
--- Insertar Regiones de Francia
-INSERT INTO regiones (pais_id, nombre) VALUES
-((SELECT id FROM paises WHERE codigo_iso = 'FR'), 'Champagne'),
-((SELECT id FROM paises WHERE codigo_iso = 'FR'), 'Bordeaux'),
-((SELECT id FROM paises WHERE codigo_iso = 'FR'), 'Burgundy'),
-((SELECT id FROM paises WHERE codigo_iso = 'FR'), 'Loire'),
-((SELECT id FROM paises WHERE codigo_iso = 'FR'), 'Alsace'),
-((SELECT id FROM paises WHERE codigo_iso = 'FR'), 'Provence'),
-((SELECT id FROM paises WHERE codigo_iso = 'FR'), 'Rhône')
-ON CONFLICT DO NOTHING;
-
--- Insertar Regiones de Italia
-INSERT INTO regiones (pais_id, nombre) VALUES
-((SELECT id FROM paises WHERE codigo_iso = 'IT'), 'Toscana'),
-((SELECT id FROM paises WHERE codigo_iso = 'IT'), 'Piamonte'),
-((SELECT id FROM paises WHERE codigo_iso = 'IT'), 'Venecia'),
-((SELECT id FROM paises WHERE codigo_iso = 'IT'), 'Sicilia'),
-((SELECT id FROM paises WHERE codigo_iso = 'IT'), 'Campania')
-ON CONFLICT DO NOTHING;
-
--- Insertar Regiones de España
-INSERT INTO regiones (pais_id, nombre) VALUES
-((SELECT id FROM paises WHERE codigo_iso = 'ES'), 'Rioja'),
-((SELECT id FROM paises WHERE codigo_iso = 'ES'), 'Ribera del Duero'),
-((SELECT id FROM paises WHERE codigo_iso = 'ES'), 'La Mancha'),
-((SELECT id FROM paises WHERE codigo_iso = 'ES'), 'Penedès'),
-((SELECT id FROM paises WHERE codigo_iso = 'ES'), 'Priorat')
-ON CONFLICT DO NOTHING;
-
--- Insertar Regiones de Austria
-INSERT INTO regiones (pais_id, nombre) VALUES
-((SELECT id FROM paises WHERE codigo_iso = 'AT'), 'Wachau'),
-((SELECT id FROM paises WHERE codigo_iso = 'AT'), 'Danubio'),
-((SELECT id FROM paises WHERE codigo_iso = 'AT'), 'Estiria')
-ON CONFLICT DO NOTHING;
-
--- Insertar Regiones de Croacia
-INSERT INTO regiones (pais_id, nombre) VALUES
-((SELECT id FROM paises WHERE codigo_iso = 'HR'), 'Dalmacia'),
-((SELECT id FROM paises WHERE codigo_iso = 'HR'), 'Istria'),
-((SELECT id FROM paises WHERE codigo_iso = 'HR'), 'Panonia')
-ON CONFLICT DO NOTHING;
-
--- Insertar Zonas
-INSERT INTO zonas (nombre, columnas, filas) VALUES
-('A1', 20, 20),
-('A2', 20, 20),
-('B1', 30, 20),
-('B2', 30, 20),
-('C1', 30, 20),
-('C2', 30, 20),
-('D1', 20, 20),
-('D2', 20, 20)
-ON CONFLICT DO NOTHING;
-
--- Generar ubicaciones
-DELETE FROM ubicaciones WHERE id > 0;
-INSERT INTO ubicaciones (zona_id, columna, fila)
-SELECT z.id, c.col, f.fil
-FROM zonas z,
-     LATERAL (SELECT generate_series(1, z.columnas) AS col) c,
-     LATERAL (SELECT generate_series(1, z.filas) AS fil) f;
-
--- Insertar Configuración
-INSERT INTO configuracion (nombre_bodega, columnas_por_zona) VALUES
-('Bodega de Candinho', 'A1:20,A2:20,B1:30,B2:30,C1:30,C2:30,D1:20,D2:20')
-ON CONFLICT DO NOTHING;
-        `;
-
-        await client.query(sql);
-        res.json({ 
-            success: true, 
-            message: 'Base de datos inicializada correctamente',
-            info: 'Tablas creadas, datos precargados, 4000 ubicaciones disponibles'
-        });
-    } catch (err) {
-        res.status(500).json({ 
-            success: false,
-            error: err.message 
-        });
-    } finally {
-        client.release();
-    }
 });
 
 // ============================================
