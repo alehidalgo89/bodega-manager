@@ -22,23 +22,169 @@ const pool = new pg.Pool({
 });
 
 // ============================================
-// INICIALIZAR BASE DE DATOS
+// INICIALIZAR BASE DE DATOS AL STARTUP
 // ============================================
 
-app.get('/init-db', async (req, res) => {
+async function initializeDatabase() {
     try {
-        res.json({ 
-            success: true, 
-            message: 'Endpoint activo - Base de datos lista',
-            info: 'Use POST /api/vinos para registrar vinos'
-        });
+        console.log('Inicializando base de datos...');
+        
+        // Crear tabla paises
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS paises (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(100) UNIQUE NOT NULL,
+                codigo_iso VARCHAR(2) UNIQUE NOT NULL
+            );
+        `);
+        console.log('✓ Tabla paises creada');
+
+        // Crear tabla regiones
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS regiones (
+                id SERIAL PRIMARY KEY,
+                pais_id INTEGER NOT NULL REFERENCES paises(id) ON DELETE CASCADE,
+                nombre VARCHAR(100) NOT NULL,
+                UNIQUE(pais_id, nombre)
+            );
+        `);
+        console.log('✓ Tabla regiones creada');
+
+        // Crear tabla tipos_vino
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS tipos_vino (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(50) UNIQUE NOT NULL
+            );
+        `);
+        console.log('✓ Tabla tipos_vino creada');
+
+        // Crear tabla zonas
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS zonas (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(5) UNIQUE NOT NULL,
+                columnas INTEGER NOT NULL,
+                filas INTEGER NOT NULL
+            );
+        `);
+        console.log('✓ Tabla zonas creada');
+
+        // Crear tabla ubicaciones
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS ubicaciones (
+                id SERIAL PRIMARY KEY,
+                zona_id INTEGER NOT NULL REFERENCES zonas(id),
+                columna INTEGER NOT NULL,
+                fila INTEGER NOT NULL,
+                disponible BOOLEAN DEFAULT TRUE,
+                UNIQUE(zona_id, columna, fila)
+            );
+        `);
+        console.log('✓ Tabla ubicaciones creada');
+
+        // Crear tabla vinos
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS vinos (
+                id SERIAL PRIMARY KEY,
+                codigo_qr VARCHAR(255) UNIQUE NOT NULL,
+                tipo_vino_id INTEGER NOT NULL REFERENCES tipos_vino(id),
+                pais_id INTEGER NOT NULL REFERENCES paises(id),
+                region_id INTEGER REFERENCES regiones(id),
+                bodega VARCHAR(150) NOT NULL,
+                ano INTEGER NOT NULL,
+                cantidad INTEGER NOT NULL DEFAULT 1,
+                cantidad_minima INTEGER DEFAULT 0,
+                ubicacion_id INTEGER REFERENCES ubicaciones(id),
+                estado VARCHAR(20) DEFAULT 'Disponible',
+                fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                notas TEXT
+            );
+        `);
+        console.log('✓ Tabla vinos creada');
+
+        // Crear tabla movimientos
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS movimientos (
+                id SERIAL PRIMARY KEY,
+                vino_id INTEGER NOT NULL REFERENCES vinos(id),
+                tipo_movimiento VARCHAR(20) NOT NULL,
+                cantidad INTEGER NOT NULL,
+                fecha_movimiento TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                notas TEXT
+            );
+        `);
+        console.log('✓ Tabla movimientos creada');
+
+        // Crear tabla configuracion
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS configuracion (
+                id SERIAL PRIMARY KEY,
+                nombre_bodega VARCHAR(150) DEFAULT 'Bodega de Candinho',
+                columnas_por_zona TEXT,
+                filas_por_zona INTEGER DEFAULT 20,
+                fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        console.log('✓ Tabla configuracion creada');
+
+        // Insertar tipos de vino
+        await pool.query(`
+            INSERT INTO tipos_vino (nombre) VALUES ('Tinto'), ('Blanco'), ('Rosado')
+            ON CONFLICT DO NOTHING;
+        `);
+        console.log('✓ Tipos de vino insertados');
+
+        // Insertar países
+        const paises = [
+            ['Francia', 'FR'], ['Italia', 'IT'], ['España', 'ES'], ['Austria', 'AT'],
+            ['Croacia', 'HR'], ['Alemania', 'DE'], ['Portugal', 'PT'], ['Argentina', 'AR'],
+            ['Chile', 'CL'], ['Australia', 'AU'], ['Sudáfrica', 'ZA'], ['Nueva Zelanda', 'NZ'],
+            ['Estados Unidos', 'US'], ['Hungría', 'HU'], ['Rumania', 'RO']
+        ];
+
+        for (const [nombre, codigo] of paises) {
+            await pool.query(
+                'INSERT INTO paises (nombre, codigo_iso) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [nombre, codigo]
+            );
+        }
+        console.log('✓ Países insertados');
+
+        // Insertar regiones
+        const fr = await pool.query('SELECT id FROM paises WHERE codigo_iso = $1', ['FR']);
+        if (fr.rows.length > 0) {
+            const frId = fr.rows[0].id;
+            const regionesFr = ['Champagne', 'Bordeaux', 'Burgundy', 'Loire', 'Alsace', 'Provence', 'Rhône'];
+            for (const region of regionesFr) {
+                await pool.query(
+                    'INSERT INTO regiones (pais_id, nombre) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                    [frId, region]
+                );
+            }
+        }
+        console.log('✓ Regiones insertadas');
+
+        // Insertar zonas
+        const zonas = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'];
+        const cols_por_zona = { 'A1': 20, 'A2': 20, 'B1': 30, 'B2': 30, 'C1': 30, 'C2': 30, 'D1': 20, 'D2': 20 };
+
+        for (const zona of zonas) {
+            await pool.query(
+                'INSERT INTO zonas (nombre, columnas, filas) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+                [zona, cols_por_zona[zona], 20]
+            );
+        }
+        console.log('✓ Zonas insertadas');
+
+        console.log('✅ Base de datos inicializada correctamente');
     } catch (err) {
-        res.status(500).json({ 
-            success: false,
-            error: err.message 
-        });
+        console.error('❌ Error al inicializar BD:', err.message);
     }
-});
+}
+
+// Inicializar BD al conectar
+initializeDatabase();
 
 // ============================================
 // RUTAS DE PAÍSES Y REGIONES
