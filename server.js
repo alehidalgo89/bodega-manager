@@ -25,7 +25,6 @@ const pool = new pg.Pool({
 // RUTAS DE PAÍSES Y REGIONES
 // ============================================
 
-// Obtener todos los países
 app.get('/api/paises', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM paises ORDER BY nombre');
@@ -35,7 +34,6 @@ app.get('/api/paises', async (req, res) => {
     }
 });
 
-// Obtener regiones de un país
 app.get('/api/paises/:pais_id/regiones', async (req, res) => {
     try {
         const { pais_id } = req.params;
@@ -79,21 +77,17 @@ app.get('/api/zonas', async (req, res) => {
 // RUTAS DE VINOS
 // ============================================
 
-// Crear nuevo vino
 app.post('/api/vinos', async (req, res) => {
     const client = await pool.connect();
     try {
         const { tipo_vino_id, pais_id, region_id, bodega, ano, cantidad, cantidad_minima, notas } = req.body;
 
-        // Validar datos
         if (!tipo_vino_id || !pais_id || !bodega || !ano) {
             return res.status(400).json({ error: 'Datos requeridos faltantes' });
         }
 
-        // Generar código QR único
         const codigo_qr = uuidv4();
 
-        // Encontrar ubicación disponible
         const ubicacion = await client.query(
             'SELECT id FROM ubicaciones WHERE disponible = true LIMIT 1'
         );
@@ -104,7 +98,6 @@ app.post('/api/vinos', async (req, res) => {
 
         const ubicacion_id = ubicacion.rows[0].id;
 
-        // Insertar vino
         const result = await client.query(
             `INSERT INTO vinos (codigo_qr, tipo_vino_id, pais_id, region_id, bodega, ano, cantidad, cantidad_minima, ubicacion_id, notas)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -112,16 +105,13 @@ app.post('/api/vinos', async (req, res) => {
             [codigo_qr, tipo_vino_id, pais_id, region_id || null, bodega, ano, cantidad || 1, cantidad_minima || 0, ubicacion_id, notas || null]
         );
 
-        // Marcar ubicación como no disponible
         await client.query('UPDATE ubicaciones SET disponible = false WHERE id = $1', [ubicacion_id]);
 
-        // Registrar movimiento
         await client.query(
             'INSERT INTO movimientos (vino_id, tipo_movimiento, cantidad) VALUES ($1, $2, $3)',
             [result.rows[0].id, 'Entrada', cantidad || 1]
         );
 
-        // Generar imagen QR
         const qr_image = await QRCode.toDataURL(codigo_qr);
 
         res.json({
@@ -135,7 +125,6 @@ app.post('/api/vinos', async (req, res) => {
     }
 });
 
-// Obtener todos los vinos con detalles
 app.get('/api/vinos', async (req, res) => {
     try {
         const { tipo, pais, region, ano, bodega } = req.query;
@@ -187,7 +176,6 @@ app.get('/api/vinos', async (req, res) => {
     }
 });
 
-// Obtener vino por código QR
 app.get('/api/vinos/qr/:codigo_qr', async (req, res) => {
     try {
         const { codigo_qr } = req.params;
@@ -219,7 +207,6 @@ app.get('/api/vinos/qr/:codigo_qr', async (req, res) => {
     }
 });
 
-// Obtener vino por ID
 app.get('/api/vinos/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -251,13 +238,11 @@ app.get('/api/vinos/:id', async (req, res) => {
     }
 });
 
-// Registrar salida de vino
 app.post('/api/vinos/:id/salida', async (req, res) => {
     try {
         const { id } = req.params;
         const { cantidad, notas } = req.body;
 
-        // Obtener vino actual
         const vino = await pool.query('SELECT * FROM vinos WHERE id = $1', [id]);
         if (vino.rows.length === 0) {
             return res.status(404).json({ error: 'Vino no encontrado' });
@@ -270,13 +255,11 @@ app.post('/api/vinos/:id/salida', async (req, res) => {
             return res.status(400).json({ error: 'Cantidad insuficiente' });
         }
 
-        // Actualizar cantidad de vino
         const result = await pool.query(
             'UPDATE vinos SET cantidad = $1 WHERE id = $2 RETURNING *',
             [nueva_cantidad, id]
         );
 
-        // Registrar movimiento
         await pool.query(
             'INSERT INTO movimientos (vino_id, tipo_movimiento, cantidad, notas) VALUES ($1, $2, $3, $4)',
             [id, 'Salida', cantidad, notas || null]
@@ -379,23 +362,19 @@ app.get('/health', (req, res) => {
 });
 
 // ============================================
-// SERVIR HTML DE INICIO
+// PÁGINA DE INICIO HTML
 // ============================================
 
 app.get('/', (req, res) => {
-    const html = `<!DOCTYPE html>
+    res.send(`
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bodega de Candinho</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
             background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
@@ -406,7 +385,6 @@ app.get('/', (req, res) => {
             min-height: 100vh;
             padding: 20px;
         }
-        
         .container {
             text-align: center;
             background: rgba(45, 45, 45, 0.8);
@@ -415,25 +393,9 @@ app.get('/', (req, res) => {
             border: 2px solid #D4AF37;
             max-width: 600px;
         }
-        
-        h1 {
-            font-size: 2.5em;
-            color: #D4AF37;
-            margin-bottom: 20px;
-        }
-        
-        .emoji {
-            font-size: 4em;
-            margin-bottom: 20px;
-        }
-        
-        p {
-            font-size: 1.1em;
-            color: #b0b0b0;
-            margin-bottom: 30px;
-            line-height: 1.6;
-        }
-        
+        h1 { font-size: 2.5em; color: #D4AF37; margin-bottom: 20px; }
+        .emoji { font-size: 4em; margin-bottom: 20px; }
+        p { font-size: 1.1em; color: #b0b0b0; margin-bottom: 30px; line-height: 1.6; }
         .status {
             background: rgba(76, 175, 80, 0.2);
             border: 1px solid #4CAF50;
@@ -443,7 +405,17 @@ app.get('/', (req, res) => {
             color: #4CAF50;
             font-weight: bold;
         }
-        
+        .features {
+            text-align: left;
+            background: rgba(212, 175, 55, 0.1);
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .features h3 { color: #D4AF37; margin-bottom: 10px; }
+        .features ul { list-style: none; }
+        .features li { padding: 5px 0; color: #b0b0b0; }
+        .features li:before { content: "✓ "; color: #4CAF50; font-weight: bold; margin-right: 8px; }
         .api-info {
             background: rgba(139, 0, 0, 0.1);
             border: 1px solid #8B0000;
@@ -452,19 +424,8 @@ app.get('/', (req, res) => {
             margin: 20px 0;
             text-align: left;
         }
-        
-        .api-info h3 {
-            color: #D4AF37;
-            margin-bottom: 10px;
-        }
-        
-        .endpoints {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        
+        .api-info h3 { color: #D4AF37; margin-bottom: 10px; }
+        .endpoints { display: grid; gap: 10px; margin-top: 10px; }
         .endpoint {
             background: rgba(0, 0, 0, 0.2);
             padding: 10px;
@@ -473,42 +434,7 @@ app.get('/', (req, res) => {
             font-size: 0.9em;
             border-left: 3px solid #D4AF37;
         }
-        
-        .endpoint code {
-            display: block;
-            margin-top: 5px;
-            color: #4CAF50;
-        }
-        
-        .features {
-            text-align: left;
-            background: rgba(212, 175, 55, 0.1);
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
-        
-        .features h3 {
-            color: #D4AF37;
-            margin-bottom: 10px;
-        }
-        
-        .features ul {
-            list-style: none;
-        }
-        
-        .features li {
-            padding: 5px 0;
-            color: #b0b0b0;
-        }
-        
-        .features li:before {
-            content: "✓ ";
-            color: #4CAF50;
-            font-weight: bold;
-            margin-right: 8px;
-        }
-        
+        .endpoint code { display: block; margin-top: 5px; color: #4CAF50; }
         .test-api {
             background: rgba(76, 175, 80, 0.1);
             border: 1px solid #4CAF50;
@@ -517,12 +443,7 @@ app.get('/', (req, res) => {
             margin: 20px 0;
             text-align: left;
         }
-
-        .test-api h3 {
-            color: #4CAF50;
-            margin-bottom: 10px;
-        }
-
+        .test-api h3 { color: #4CAF50; margin-bottom: 10px; }
         .test-api button {
             background: #4CAF50;
             color: white;
@@ -533,11 +454,7 @@ app.get('/', (req, res) => {
             margin-top: 10px;
             font-weight: bold;
         }
-
-        .test-api button:hover {
-            background: #45a049;
-        }
-
+        .test-api button:hover { background: #45a049; }
         .result {
             background: rgba(0, 0, 0, 0.2);
             padding: 10px;
@@ -550,24 +467,16 @@ app.get('/', (req, res) => {
             color: #4CAF50;
             font-family: monospace;
         }
-
-        .result.error {
-            color: #ff6b6b;
-            border: 1px solid #ff6b6b;
-        }
+        .result.error { color: #ff6b6b; border: 1px solid #ff6b6b; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="emoji">🍷</div>
-        
         <h1>Bodega de Candinho</h1>
-        
         <p>Sistema de Gestión de Inventario de Vinos</p>
         
-        <div class="status">
-            ✓ Servidor Activo y Funcionando
-        </div>
+        <div class="status">✓ Servidor Activo y Funcionando</div>
         
         <div class="features">
             <h3>Características</h3>
@@ -582,86 +491,51 @@ app.get('/', (req, res) => {
         </div>
         
         <div class="api-info">
-            <h3>🔌 API Endpoints Disponibles</h3>
+            <h3>🔌 API Endpoints</h3>
             <div class="endpoints">
-                <div class="endpoint">
-                    Obtener Países
-                    <code>GET /api/paises</code>
-                </div>
-                <div class="endpoint">
-                    Obtener Regiones
-                    <code>GET /api/paises/:id/regiones</code>
-                </div>
-                <div class="endpoint">
-                    Obtener Tipos de Vino
-                    <code>GET /api/tipos-vino</code>
-                </div>
-                <div class="endpoint">
-                    Obtener Vinos
-                    <code>GET /api/vinos</code>
-                </div>
-                <div class="endpoint">
-                    Crear Vino
-                    <code>POST /api/vinos</code>
-                </div>
-                <div class="endpoint">
-                    Registrar Salida
-                    <code>POST /api/vinos/:id/salida</code>
-                </div>
-                <div class="endpoint">
-                    Reportes
-                    <code>GET /api/reportes/resumen</code>
-                </div>
-                <div class="endpoint">
-                    Movimientos
-                    <code>GET /api/movimientos</code>
-                </div>
+                <div class="endpoint">Obtener Países<code>GET /api/paises</code></div>
+                <div class="endpoint">Obtener Vinos<code>GET /api/vinos</code></div>
+                <div class="endpoint">Crear Vino<code>POST /api/vinos</code></div>
+                <div class="endpoint">Reportes<code>GET /api/reportes/resumen</code></div>
+                <div class="endpoint">Movimientos<code>GET /api/movimientos</code></div>
             </div>
         </div>
 
         <div class="test-api">
             <h3>🧪 Probar API</h3>
-            <p>Click para probar conexión a la base de datos:</p>
             <button onclick="testAPI()">Obtener Países</button>
             <div id="result"></div>
         </div>
         
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #444;">
             <p style="font-size: 0.9em; color: #888;">
-                🚀 Desplegado en Heroku | 📚 <a href="https://github.com/alehidalgo89/bodega-manager" style="color: #D4AF37; text-decoration: none;">GitHub</a>
+                🚀 Desplegado en Heroku
             </p>
         </div>
     </div>
 
     <script>
         function testAPI() {
-            const resultDiv = document.getElementById('result');
-            resultDiv.innerHTML = '⏳ Conectando...';
+            var resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Conectando...';
             resultDiv.className = '';
 
             fetch('/api/paises')
-                .then(response => response.json())
-                .then(data => {
-                    resultDiv.innerHTML = \`✓ API Funcionando<br><br>
-                    <strong>Países cargados:</strong> \${data.length}<br>
-                    <strong>Primeros países:</strong><br>
-                    \${data.slice(0, 3).map(p => \`• \${p.nombre}\`).join('<br>')}\`;
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    var html = 'API Funcionando - Paises: ' + data.length;
+                    resultDiv.innerHTML = html;
                     resultDiv.className = '';
                 })
-                .catch(error => {
-                    resultDiv.innerHTML = \`✗ Error: \${error.message}\`;
+                .catch(function(error) {
+                    resultDiv.innerHTML = 'Error: ' + error.message;
                     resultDiv.className = 'error';
                 });
         }
     </script>
 </body>
-</html>\`;
-    res.send(html);
-});
-
-// Página 404
-app.use((req, res) => {
-    res.status(404).json({ error: 'Endpoint no encontrado' });
+</html>
+    `);
 });
 
 // ============================================
@@ -670,5 +544,5 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-    console.log(\`Servidor Bodega de Candinho corriendo en puerto \${PORT}\`);
+    console.log('Servidor Bodega de Candinho corriendo en puerto ' + PORT);
 });
