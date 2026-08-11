@@ -227,7 +227,7 @@ app.get('/', (req, res) => {
         
         body { 
             font-family: 'Segoe UI', -apple-system, system-ui, sans-serif;
-            background: #0f0f0f;
+            background: #050508;
             color: #f5f5f5;
         }
         
@@ -235,16 +235,20 @@ app.get('/', (req, res) => {
         
         header { 
             text-align: center; 
-            padding: 30px 0 20px;
-            border-bottom: 2px solid #d4af37;
-            margin-bottom: 20px;
+            padding: 40px 0 30px;
+            border-bottom: 2px solid #a05a5a;
+            border-top: 1px solid rgba(212, 175, 55, 0.3);
+            margin-bottom: 30px;
+            background: linear-gradient(180deg, rgba(114, 46, 46, 0.05) 0%, transparent 100%);
         }
         
         h1 { 
             font-family: Georgia, serif;
-            font-size: 2em;
-            color: #d4af37;
-            margin-bottom: 5px;
+            font-size: 2.4em;
+            color: #a05a5a;
+            margin-bottom: 8px;
+            font-weight: 400;
+            letter-spacing: 2px;
         }
         
         header p {
@@ -255,31 +259,33 @@ app.get('/', (req, res) => {
         .tabs { 
             display: flex;
             gap: 0;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             flex-wrap: wrap;
-            border-bottom: 1px solid #2d2d2d;
+            border-bottom: 2px solid #2d2d2d;
         }
         
         .tab-btn { 
-            padding: 12px 20px;
+            padding: 14px 24px;
             background: transparent;
             border: none;
             color: #a8a8a8;
             cursor: pointer;
             font-weight: 500;
-            font-size: 1em;
+            font-size: 0.95em;
             border-bottom: 3px solid transparent;
             transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         .tab-btn:hover {
-            color: #d4af37;
-            border-bottom-color: #d4af37;
+            color: #a05a5a;
+            border-bottom-color: #a05a5a;
         }
         
         .tab-btn.active { 
-            color: #d4af37;
-            border-bottom-color: #d4af37;
+            color: #a05a5a;
+            border-bottom-color: #a05a5a;
         }
         
         .tab-content { 
@@ -292,9 +298,13 @@ app.get('/', (req, res) => {
         }
         
         .tab-content h2 {
-            font-size: 1.5em;
-            margin-bottom: 20px;
+            font-size: 1.6em;
+            margin-bottom: 25px;
             color: #f5f5f5;
+            padding-bottom: 15px;
+            border-bottom: 2px solid rgba(212, 175, 55, 0.3);
+            font-weight: 400;
+            letter-spacing: 1px;
         }
         
         input, select, textarea { 
@@ -310,7 +320,7 @@ app.get('/', (req, res) => {
         
         input:focus, select:focus, textarea:focus {
             outline: none;
-            border-color: #d4af37;
+            border-color: #a05a5a;
             background: #252525;
         }
         
@@ -323,7 +333,7 @@ app.get('/', (req, res) => {
         
         button { 
             padding: 10px 20px;
-            background: #d4af37;
+            background: #a05a5a;
             color: #000;
             border: none;
             border-radius: 4px;
@@ -334,7 +344,7 @@ app.get('/', (req, res) => {
         }
         
         button:hover { 
-            background: #e8c547;
+            background: #e8d5c4;
             transform: translateY(-2px);
         }
         
@@ -346,8 +356,8 @@ app.get('/', (req, res) => {
             background: rgba(212, 175, 55, 0.15);
             padding: 10px;
             margin: 10px 0;
-            border-left: 4px solid #d4af37;
-            color: #d4af37;
+            border-left: 4px solid #a05a5a;
+            color: #a05a5a;
         }
         
         table { 
@@ -361,8 +371,8 @@ app.get('/', (req, res) => {
             padding: 10px;
             text-align: left;
             font-weight: 600;
-            color: #d4af37;
-            border-bottom: 2px solid #d4af37;
+            color: #a05a5a;
+            border-bottom: 2px solid #a05a5a;
         }
         
         table td { 
@@ -375,17 +385,24 @@ app.get('/', (req, res) => {
         }
         
         .section { 
-            background: rgba(30, 30, 30, 0.5);
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 4px;
-            border: 1px solid #2d2d2d;
+            background: rgba(20, 20, 20, 0.8);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 6px;
+            border: 1px solid rgba(212, 175, 55, 0.15);
+            border-left: 3px solid rgba(212, 175, 55, 0.4);
         }
         
         .section h3 {
-            font-size: 1.1em;
-            margin-bottom: 10px;
-            color: #d4af37;
+            font-size: 1.15em;
+            margin-bottom: 15px;
+            color: #a05a5a;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+        }
         }
         
         .checkbox-group { 
@@ -406,7 +423,7 @@ app.get('/', (req, res) => {
         .checkbox-group input { 
             width: auto;
             margin: 0 8px 0 0;
-            accent-color: #d4af37;
+            accent-color: #a05a5a;
         }
         
         .msg { 
@@ -439,17 +456,19 @@ app.get('/', (req, res) => {
 </head>
 <body>
     <header>
-        <h1>Bodega de Candinho</h1>
-        <p>Sistema de gestión de inventario</p>
+        <img src="./logo_ah.png" alt="Bodegas Logo" style="max-height: 120px; margin: 0 auto 20px; display: block; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));">
+        
+        <h1>Bodegas</h1>
+        <p>Software de Gestión de Bodegas</p>
     </header>
 
     <div class="container">
         <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab('movimientos')">🔄 Movimientos</button>
-            <button class="tab-btn" onclick="switchTab('inventario')">📚 Inventario</button>
-            <button class="tab-btn" onclick="switchTab('scanner')">📱 Scanner</button>
-            <button class="tab-btn" onclick="switchTab('datos')">➕ Datos</button>
-            <button class="tab-btn" onclick="switchTab('admin')">⚙️ Admin</button>
+            <button class="tab-btn active" onclick="switchTab('movimientos')">MOVIMIENTOS</button>
+            <button class="tab-btn" onclick="switchTab('inventario')">INVENTARIO</button>
+            <button class="tab-btn" onclick="switchTab('scanner')">SCANNER</button>
+            <button class="tab-btn" onclick="switchTab('datos')">DATOS MAESTROS</button>
+            <button class="tab-btn" onclick="switchTab('admin')">ADMINISTRACIÓN</button>
         </div>
 
         <div id="movimientos" class="tab-content active">
@@ -850,8 +869,8 @@ app.get('/', (req, res) => {
                     let html = '';
                     encontrados.forEach((v, idx) => {
                         const ubic = v.zona ? v.zona + '(' + v.columna + ',' + v.fila + ')' : '-';
-                        html += '<div style="background: #2d2d2d; padding: 12px; margin: 8px 0; border-radius: 4px; border: 1px solid #d4af37; cursor: pointer; text-align: center;" onclick="seleccionarUbicacion(' + idx + ', ' + v.id + ')">';
-                        html += '<div style="font-size: 1.1em; font-weight: 600; color: #d4af37; margin-bottom: 4px;">' + ubic + '</div>';
+                        html += '<div style="background: #2d2d2d; padding: 12px; margin: 8px 0; border-radius: 4px; border: 1px solid #a05a5a; cursor: pointer; text-align: center;" onclick="seleccionarUbicacion(' + idx + ', ' + v.id + ')">';
+                        html += '<div style="font-size: 1.1em; font-weight: 600; color: #a05a5a; margin-bottom: 4px;">' + ubic + '</div>';
                         html += '<div style="font-size: 0.85em; color: #a8a8a8;">ID: ' + v.id + '</div>';
                         html += '</div>';
                     });
