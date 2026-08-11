@@ -95,8 +95,8 @@ app.get('/setup', async (req, res) => {
             ['Tinto', 'Blanco', 'Rosado', 'Espumante', 'Jerez/Fortificado', 'Postre']);
         
         // Insertar tipos de movimiento
-        await pool.query('INSERT INTO tipos_movimiento (nombre) VALUES ($1), ($2), ($3)', 
-            ['Entrada', 'Salida', 'Consumo']);
+        await pool.query('INSERT INTO tipos_movimiento (nombre) VALUES ($1), ($2)', 
+            ['Entrada', 'Salida']);
         
         // Insertar zonas y ubicaciones
         const zonas = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'];
@@ -276,12 +276,14 @@ app.get('/', (req, res) => {
                 <div><label>Bodega</label><input type="text" id="bodega" placeholder="Bodega"></div>
                 <div><label>Año</label><input type="number" id="ano" placeholder="2020" min="1900" max="2099"></div>
                 <div><label>Cantidad</label><input type="number" id="cantidad" placeholder="1" min="1" value="1"></div>
-                <div><label>Movimiento</label><select id="movimiento"><option>-- Seleccionar --</option></select></div>
                 <div><label>Zona</label><select id="zona"><option>-- Seleccionar --</option></select></div>
                 <div><label>Columna</label><input type="number" id="columna" placeholder="1" min="1"></div>
                 <div><label>Fila</label><input type="number" id="fila" placeholder="1" min="1" max="20"></div>
             </div>
-            <button onclick="registrar()">GUARDAR BOTELLA</button>
+            <div style="margin-top: 15px; display: flex; gap: 10px;">
+                <button onclick="registrar(1)">📥 ENTRADA</button>
+                <button onclick="registrar(2)">📤 SALIDA</button>
+            </div>
             <div class="msg" id="msg"></div>
         </div>
         
@@ -348,12 +350,6 @@ app.get('/', (req, res) => {
                 d.forEach(z => { const o = document.createElement('option'); o.value = z.id; o.text = z.nombre; sel.appendChild(o); });
             });
             
-            fetch('/api/tipos-movimiento').then(r => r.json()).then(d => {
-                const sel = document.getElementById('movimiento');
-                sel.innerHTML = '<option>-- Seleccionar --</option>';
-                d.forEach(m => { const o = document.createElement('option'); o.value = m.id; o.text = m.nombre; sel.appendChild(o); });
-            });
-            
             cargarEstadisticas();
             cargarVinos();
         }
@@ -392,7 +388,7 @@ app.get('/', (req, res) => {
             });
         }
         
-        function registrar() {
+        function registrar(tipoMovimiento) {
             const n = document.getElementById('nombre').value;
             const t = document.getElementById('tipo').value;
             const p = document.getElementById('pais').value;
@@ -400,7 +396,6 @@ app.get('/', (req, res) => {
             const b = document.getElementById('bodega').value;
             const a = document.getElementById('ano').value;
             const cant = document.getElementById('cantidad').value;
-            const mov = document.getElementById('movimiento').value;
             const z = document.getElementById('zona').value;
             const c = document.getElementById('columna').value;
             const f = document.getElementById('fila').value;
@@ -414,7 +409,7 @@ app.get('/', (req, res) => {
             fetch('/api/vinos', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre: n, tipo_id: parseInt(t), pais_id: p ? parseInt(p) : null, region_id: r ? parseInt(r) : null, bodega: b, ano: a ? parseInt(a) : null, cantidad: cant ? parseInt(cant) : 1, tipo_movimiento_id: mov ? parseInt(mov) : null, zona_id: parseInt(z), columna: parseInt(c), fila: parseInt(f) })
+                body: JSON.stringify({ nombre: n, tipo_id: parseInt(t), pais_id: p ? parseInt(p) : null, region_id: r ? parseInt(r) : null, bodega: b, ano: a ? parseInt(a) : null, cantidad: cant ? parseInt(cant) : 1, tipo_movimiento_id: tipoMovimiento, zona_id: parseInt(z), columna: parseInt(c), fila: parseInt(f) })
             }).then(r => r.json()).then(d => {
                 const msg = document.getElementById('msg');
                 if (d.ok) { 
