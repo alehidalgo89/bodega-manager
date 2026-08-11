@@ -41,7 +41,7 @@ app.get('/setup', async (req, res) => {
         await pool.query('CREATE TABLE tipos_movimiento (id SERIAL PRIMARY KEY, nombre VARCHAR(100) UNIQUE)');
         await pool.query('CREATE TABLE zonas (id SERIAL PRIMARY KEY, nombre VARCHAR(50) UNIQUE)');
         await pool.query('CREATE TABLE ubicaciones (id SERIAL PRIMARY KEY, zona_id INT REFERENCES zonas(id), columna INT, fila INT, disponible BOOLEAN DEFAULT TRUE)');
-        await pool.query(`CREATE TABLE vinos (id SERIAL PRIMARY KEY, codigo_qr VARCHAR(100) UNIQUE, nombre VARCHAR(200), tipo_id INT REFERENCES tipos(id), pais_id INT REFERENCES paises(id), region_id INT REFERENCES regiones(id), bodega VARCHAR(100), ano INT, ubicacion_id INT REFERENCES ubicaciones(id), estado VARCHAR(50) DEFAULT 'activa')`);
+        await pool.query(`CREATE TABLE vinos (id SERIAL PRIMARY KEY, codigo_qr VARCHAR(100) UNIQUE, nombre VARCHAR(200), tipo_id INT REFERENCES tipos(id), pais_id INT REFERENCES paises(id), region_id INT REFERENCES regiones(id), bodega VARCHAR(100), ano INT, ubicacion_id INT REFERENCES ubicaciones(id), cantidad INT DEFAULT 1, estado VARCHAR(50) DEFAULT 'activa')`);
         await pool.query('CREATE TABLE movimientos (id SERIAL PRIMARY KEY, vino_id INT REFERENCES vinos(id), tipo_movimiento_id INT REFERENCES tipos_movimiento(id), fecha TIMESTAMP DEFAULT NOW())');
         
         // PAISES PRODUCTORES DE VINOS
@@ -183,7 +183,7 @@ app.get('/api/disponibilidad', async (req, res) => {
 app.get('/api/vinos', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT v.id, v.nombre, v.codigo_qr, tv.nombre as tipo, p.nombre as pais, r.nombre as region, v.bodega, v.ano, v.estado
+            SELECT v.id, v.nombre, v.codigo_qr, tv.nombre as tipo, p.nombre as pais, r.nombre as region, v.bodega, v.ano, v.cantidad, v.estado
             FROM vinos v
             LEFT JOIN tipos tv ON v.tipo_id = tv.id
             LEFT JOIN paises p ON v.pais_id = p.id
@@ -197,7 +197,7 @@ app.get('/api/vinos', async (req, res) => {
 });
 
 app.post('/api/vinos', async (req, res) => {
-    const { nombre, tipo_id, pais_id, region_id, bodega, ano, zona_id, columna, fila } = req.body;
+    const { nombre, tipo_id, pais_id, region_id, bodega, ano, zona_id, columna, fila, cantidad, tipo_movimiento_id } = req.body;
     
     if (!nombre || !tipo_id || !zona_id || !columna || !fila) {
         return res.json({ error: 'Faltan datos requeridos' });
@@ -215,11 +215,16 @@ app.post('/api/vinos', async (req, res) => {
         
         const codigo_qr = crypto.randomBytes(8).toString('hex');
         const vinRes = await pool.query(
-            'INSERT INTO vinos (codigo_qr, nombre, tipo_id, pais_id, region_id, bodega, ano, ubicacion_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-            [codigo_qr, nombre, tipo_id, pais_id || null, region_id || null, bodega || 'Sin especificar', ano || new Date().getFullYear(), ubicRes.rows[0].id]
+            'INSERT INTO vinos (codigo_qr, nombre, tipo_id, pais_id, region_id, bodega, ano, ubicacion_id, cantidad) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+            [codigo_qr, nombre, tipo_id, pais_id || null, region_id || null, bodega || 'Sin especificar', ano || new Date().getFullYear(), ubicRes.rows[0].id, cantidad || 1]
         );
         
         await pool.query('UPDATE ubicaciones SET disponible = FALSE WHERE id = $1', [ubicRes.rows[0].id]);
+        
+        // Registrar movimiento si se proporciona
+        if (tipo_movimiento_id) {
+            await pool.query('INSERT INTO movimientos (vino_id, tipo_movimiento_id) VALUES ($1, $2)', [vinRes.rows[0].id, tipo_movimiento_id]);
+        }
         
         res.json({ ok: true, vino_id: vinRes.rows[0].id, codigo_qr });
     } catch (err) {
@@ -270,6 +275,8 @@ app.get('/', (req, res) => {
                 <div><label>Región</label><select id="region"><option>-- Seleccionar País --</option></select></div>
                 <div><label>Bodega</label><input type="text" id="bodega" placeholder="Bodega"></div>
                 <div><label>Año</label><input type="number" id="ano" placeholder="2020" min="1900" max="2099"></div>
+                <div><label>Cantidad</label><input type="number" id="cantidad" placeholder="1" min="1" value="1"></div>
+                <div><label>Movimiento</label><select id="movimiento"><option>-- Seleccionar --</option></select></div>
                 <div><label>Zona</label><select id="zona"><option>-- Seleccionar --</option></select></div>
                 <div><label>Columna</label><input type="number" id="columna" placeholder="1" min="1"></div>
                 <div><label>Fila</label><input type="number" id="fila" placeholder="1" min="1" max="20"></div>
@@ -307,6 +314,7 @@ app.get('/', (req, res) => {
                         <th>Región</th>
                         <th>Bodega</th>
                         <th>Año</th>
+                        <th>Cantidad</th>
                         <th>QR</th>
                     </tr>
                 </thead>
@@ -340,6 +348,12 @@ app.get('/', (req, res) => {
                 d.forEach(z => { const o = document.createElement('option'); o.value = z.id; o.text = z.nombre; sel.appendChild(o); });
             });
             
+            fetch('/api/tipos-movimiento').then(r => r.json()).then(d => {
+                const sel = document.getElementById('movimiento');
+                sel.innerHTML = '<option>-- Seleccionar --</option>';
+                d.forEach(m => { const o = document.createElement('option'); o.value = m.id; o.text = m.nombre; sel.appendChild(o); });
+            });
+            
             cargarEstadisticas();
             cargarVinos();
         }
@@ -371,9 +385,9 @@ app.get('/', (req, res) => {
             fetch('/api/vinos').then(r => r.json()).then(d => {
                 const t = document.getElementById('tabla');
                 if (d.length === 0) {
-                    t.innerHTML = '<tr><td colspan="7" style="text-align: center;">Sin botellas registradas</td></tr>';
+                    t.innerHTML = '<tr><td colspan="8" style="text-align: center;">Sin botellas registradas</td></tr>';
                 } else {
-                    t.innerHTML = d.map(v => '<tr><td>' + v.nombre + '</td><td>' + (v.tipo || '-') + '</td><td>' + (v.pais || '-') + '</td><td>' + (v.region || '-') + '</td><td>' + (v.bodega || '-') + '</td><td>' + v.ano + '</td><td>' + v.codigo_qr.substring(0, 8) + '</td></tr>').join('');
+                    t.innerHTML = d.map(v => '<tr><td>' + v.nombre + '</td><td>' + (v.tipo || '-') + '</td><td>' + (v.pais || '-') + '</td><td>' + (v.region || '-') + '</td><td>' + (v.bodega || '-') + '</td><td>' + v.ano + '</td><td>' + v.cantidad + '</td><td>' + v.codigo_qr.substring(0, 8) + '</td></tr>').join('');
                 }
             });
         }
@@ -385,6 +399,8 @@ app.get('/', (req, res) => {
             const r = document.getElementById('region').value;
             const b = document.getElementById('bodega').value;
             const a = document.getElementById('ano').value;
+            const cant = document.getElementById('cantidad').value;
+            const mov = document.getElementById('movimiento').value;
             const z = document.getElementById('zona').value;
             const c = document.getElementById('columna').value;
             const f = document.getElementById('fila').value;
@@ -398,7 +414,7 @@ app.get('/', (req, res) => {
             fetch('/api/vinos', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre: n, tipo_id: parseInt(t), pais_id: p ? parseInt(p) : null, region_id: r ? parseInt(r) : null, bodega: b, ano: a ? parseInt(a) : null, zona_id: parseInt(z), columna: parseInt(c), fila: parseInt(f) })
+                body: JSON.stringify({ nombre: n, tipo_id: parseInt(t), pais_id: p ? parseInt(p) : null, region_id: r ? parseInt(r) : null, bodega: b, ano: a ? parseInt(a) : null, cantidad: cant ? parseInt(cant) : 1, tipo_movimiento_id: mov ? parseInt(mov) : null, zona_id: parseInt(z), columna: parseInt(c), fila: parseInt(f) })
             }).then(r => r.json()).then(d => {
                 const msg = document.getElementById('msg');
                 if (d.ok) { 
@@ -407,6 +423,7 @@ app.get('/', (req, res) => {
                     document.getElementById('nombre').value = ''; 
                     document.getElementById('bodega').value = ''; 
                     document.getElementById('ano').value = ''; 
+                    document.getElementById('cantidad').value = '1';
                     cargarEstadisticas();
                     cargarVinos();
                 }
