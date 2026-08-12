@@ -154,7 +154,7 @@ app.get('/api/disponibilidad', async (req, res) => {
 
 app.get('/api/vinos', async (req, res) => {
     try {
-        const result = await pool.query(`SELECT v.id, v.nombre, v.codigo_qr, tv.nombre as tipo, p.nombre as pais, r.nombre as region, v.bodega, v.ano, v.cantidad, v.estado FROM vinos v LEFT JOIN tipos tv ON v.tipo_id = tv.id LEFT JOIN paises p ON v.pais_id = p.id LEFT JOIN regiones r ON v.region_id = r.id ORDER BY v.id DESC LIMIT 100`);
+        const result = await pool.query(`SELECT v.id, v.nombre, v.codigo_qr, tv.nombre as tipo, p.nombre as pais, r.nombre as region, v.bodega, v.ano, v.cantidad, v.estado, z.nombre as zona, u.columna, u.fila FROM vinos v LEFT JOIN tipos tv ON v.tipo_id = tv.id LEFT JOIN paises p ON v.pais_id = p.id LEFT JOIN regiones r ON v.region_id = r.id LEFT JOIN ubicaciones u ON v.ubicacion_id = u.id LEFT JOIN zonas z ON u.zona_id = z.id ORDER BY v.id DESC LIMIT 100`);
         res.json(result.rows);
     } catch (err) {
         res.json({ error: err.message });
@@ -358,7 +358,7 @@ app.get('/', (req, res) => {
             <div class="tab-content" id="tab-inventario">
                 <div class="section-title">Inventario</div>
                 <div class="card">
-                    <table><thead><tr><th>Nombre</th><th>Tipo</th><th>País</th><th>Región</th><th>Bodega</th><th>Año</th><th>Cantidad</th></tr></thead><tbody id="tabla"></tbody></table>
+                    <table><thead><tr><th>Nombre</th><th>Tipo</th><th>País</th><th>Región</th><th>Bodega</th><th>Año</th><th>Cantidad</th><th>Ubicación</th></tr></thead><tbody id="tabla"></tbody></table>
                 </div>
             </div>
             
@@ -431,9 +431,9 @@ app.get('/', (req, res) => {
                 const t = document.getElementById('tabla');
                 const activos = d.filter(v => v.estado !== 'salida');
                 if (activos.length === 0) {
-                    t.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #888;">Sin botellas en inventario</td></tr>';
+                    t.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">Sin botellas en inventario</td></tr>';
                 } else {
-                    t.innerHTML = activos.map(v => '<tr><td>' + v.nombre + '</td><td>' + (v.tipo || '-') + '</td><td>' + (v.pais || '-') + '</td><td>' + (v.region || '-') + '</td><td>' + (v.bodega || '-') + '</td><td>' + v.ano + '</td><td>' + v.cantidad + '</td></tr>').join('');
+                    t.innerHTML = activos.map(v => '<tr><td>' + v.nombre + '</td><td>' + (v.tipo || '-') + '</td><td>' + (v.pais || '-') + '</td><td>' + (v.region || '-') + '</td><td>' + (v.bodega || '-') + '</td><td>' + v.ano + '</td><td>' + v.cantidad + '</td><td><strong>' + (v.zona || '-') + '</strong> Col ' + (v.columna || '-') + ' Fila ' + (v.fila || '-') + '</td></tr>').join('');
                 }
             });
         }
@@ -491,7 +491,7 @@ app.get('/', (req, res) => {
                 if (resultado.length === 0) {
                     res.innerHTML = '<div style="color: #888; padding: 10px;">No encontrado</div>';
                 } else {
-                    res.innerHTML = resultado.map(v => '<div class="search-item"><strong>' + v.nombre + '</strong> (' + v.ano + ')<br><small>' + (v.tipo || '-') + ' | ' + (v.pais || '-') + ' - ' + (v.region || '') + ' | Bodega: ' + (v.bodega || '-') + ' | Cantidad: ' + v.cantidad + '<br>QR: ' + v.codigo_qr.substring(0, 12) + '</small><br><button onclick="seleccionarVino(' + v.id + ', \\'' + v.nombre.replace(/'/g, "\\'") + '\\', \\'' + (v.bodega || '').replace(/'/g, "\\'") + '\\', ' + v.ano + ', \\'' + v.codigo_qr + '\\', \\'N/A\\', 0, 0)" style="margin-top: 8px; padding: 8px 16px; font-size: 0.85em;">Registrar Salida</button></div>').join('');
+                    res.innerHTML = resultado.map(v => '<div class="search-item"><strong>' + v.nombre + '</strong> (' + v.ano + ')<br><small>' + (v.tipo || '-') + ' | ' + (v.pais || '-') + ' - ' + (v.region || '') + ' | Bodega: ' + (v.bodega || '-') + ' | Cantidad: ' + v.cantidad + '<br>📍 Ubicación: <strong>' + (v.zona || '-') + '</strong> - Col ' + (v.columna || '-') + ' - Fila ' + (v.fila || '-') + '<br>QR: ' + v.codigo_qr.substring(0, 12) + '</small><br><button onclick="seleccionarVino(' + v.id + ', \\'' + v.nombre.replace(/'/g, "\\'") + '\\', \\'' + (v.bodega || '').replace(/'/g, "\\'") + '\\', ' + v.ano + ', \\'' + v.codigo_qr + '\\', \\'N/A\\', 0, 0)" style="margin-top: 8px; padding: 8px 16px; font-size: 0.85em;">Registrar Salida</button></div>').join('');
                 }
             });
         }
