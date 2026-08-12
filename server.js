@@ -154,7 +154,7 @@ app.get('/api/disponibilidad', async (req, res) => {
 
 app.get('/api/vinos', async (req, res) => {
     try {
-        const result = await pool.query(`SELECT v.id, v.nombre, v.codigo_qr, tv.nombre as tipo, p.nombre as pais, r.nombre as region, v.bodega, v.ano, v.cantidad FROM vinos v LEFT JOIN tipos tv ON v.tipo_id = tv.id LEFT JOIN paises p ON v.pais_id = p.id LEFT JOIN regiones r ON v.region_id = r.id ORDER BY v.id DESC LIMIT 20`);
+        const result = await pool.query(`SELECT v.id, v.nombre, v.codigo_qr, tv.nombre as tipo, p.nombre as pais, r.nombre as region, v.bodega, v.ano, v.cantidad, v.estado FROM vinos v LEFT JOIN tipos tv ON v.tipo_id = tv.id LEFT JOIN paises p ON v.pais_id = p.id LEFT JOIN regiones r ON v.region_id = r.id ORDER BY v.id DESC LIMIT 100`);
         res.json(result.rows);
     } catch (err) {
         res.json({ error: err.message });
@@ -259,14 +259,55 @@ app.get('/', (req, res) => {
     
     <div class="container">
         <div class="sidebar">
-            <div class="nav-item active" onclick="switchTab('entrada', this)">Entrada</div>
+            <div class="nav-item active" onclick="switchTab('inicio', this)">Inicio</div>
+            <div class="nav-item" onclick="switchTab('entrada', this)">Entrada</div>
             <div class="nav-item" onclick="switchTab('salida', this)">Salida</div>
             <div class="nav-item" onclick="switchTab('inventario', this)">Inventario</div>
             <div class="nav-item" onclick="switchTab('admin', this)">Administración</div>
         </div>
         
         <div class="main-content">
-            <div class="tab-content active" id="tab-entrada">
+            <div class="tab-content active" id="tab-inicio">
+                <div class="section-title">Wine Collection</div>
+                
+                <div class="stats">
+                    <div class="stat-card"><div class="stat-value" id="inicio-total">0</div><div class="stat-label">Total Ubicaciones</div></div>
+                    <div class="stat-card"><div class="stat-value" id="inicio-disponibles">0</div><div class="stat-label">Disponibles</div></div>
+                    <div class="stat-card"><div class="stat-value" id="inicio-ocupadas">0</div><div class="stat-label">Ocupadas</div></div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-title">Buscar Vino</div>
+                    <input type="text" id="buscar-inicio" placeholder="Nombre, región, bodega o QR" oninput="buscarInicio()" style="margin-bottom: 20px; font-size: 1.05em;">
+                    <div class="search-results" id="search-inicio"></div>
+                </div>
+            </div>
+                <div class="section-title">Registrar Entrada</div>
+                <div class="card">
+                    <div class="card-title">Información del Vino</div>
+                    <div class="form-grid">
+                        <div><label>Nombre</label><input type="text" id="nombre" placeholder="Malbec"></div>
+                        <div><label>Tipo</label><select id="tipo"><option>--</option></select></div>
+                        <div><label>País</label><select id="pais" onchange="cargarRegiones()"><option>--</option></select></div>
+                        <div><label>Región</label><select id="region"><option>--</option></select></div>
+                        <div><label>Bodega</label><input type="text" id="bodega"></div>
+                        <div><label>Año</label><input type="number" id="ano" value="2020"></div>
+                        <div><label>Cantidad</label><input type="number" id="cantidad" value="1"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Ubicación</div>
+                    <div class="form-grid">
+                        <div><label>Zona</label><select id="zona"><option>--</option></select></div>
+                        <div><label>Columna</label><input type="number" id="columna" placeholder="1"></div>
+                        <div><label>Fila</label><input type="number" id="fila" placeholder="1"></div>
+                    </div>
+                    <button onclick="registrar()">📥 GUARDAR ENTRADA</button>
+                    <div class="msg" id="msg-entrada"></div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="tab-entrada">
                 <div class="section-title">Registrar Entrada</div>
                 <div class="card">
                     <div class="card-title">Información del Vino</div>
@@ -379,6 +420,9 @@ app.get('/', (req, res) => {
                 document.getElementById('total').textContent = d.total || '0';
                 document.getElementById('disponibles').textContent = d.disponibles || '0';
                 document.getElementById('ocupadas').textContent = d.ocupadas || '0';
+                document.getElementById('inicio-total').textContent = d.total || '0';
+                document.getElementById('inicio-disponibles').textContent = d.disponibles || '0';
+                document.getElementById('inicio-ocupadas').textContent = d.ocupadas || '0';
             });
         }
         
@@ -427,6 +471,27 @@ app.get('/', (req, res) => {
                     document.getElementById('card-detalles').style.display = 'none';
                 } else {
                     res.innerHTML = d.map(v => '<div class="search-item" onclick="seleccionarVino(' + v.id + ', \\'' + v.nombre.replace(/'/g, "\\'") + '\\', \\'' + (v.bodega || '').replace(/'/g, "\\'") + '\\', ' + v.ano + ', \\'' + v.codigo_qr + '\\', \\'' + (v.zona || '') + '\\', ' + v.columna + ', ' + v.fila + ')">' + v.nombre + ' (' + v.ano + ')<br><small>📍 ' + (v.zona || 'Sin ubicación') + ' - Col ' + v.columna + ', Fila ' + v.fila + '</small></div>').join('');
+                }
+            });
+        }
+        
+        function buscarInicio() {
+            const q = document.getElementById('buscar-inicio').value;
+            if (q.length < 1) { document.getElementById('search-inicio').innerHTML = ''; return; }
+            fetch('/api/vinos').then(r => r.json()).then(todos => {
+                const activos = todos.filter(v => v.estado !== 'salida');
+                const resultado = activos.filter(v => 
+                    v.nombre.toLowerCase().includes(q.toLowerCase()) ||
+                    (v.pais && v.pais.toLowerCase().includes(q.toLowerCase())) ||
+                    (v.region && v.region.toLowerCase().includes(q.toLowerCase())) ||
+                    (v.bodega && v.bodega.toLowerCase().includes(q.toLowerCase())) ||
+                    (v.codigo_qr && v.codigo_qr.includes(q))
+                );
+                const res = document.getElementById('search-inicio');
+                if (resultado.length === 0) {
+                    res.innerHTML = '<div style="color: #888; padding: 10px;">No encontrado</div>';
+                } else {
+                    res.innerHTML = resultado.map(v => '<div class="search-item"><strong>' + v.nombre + '</strong> (' + v.ano + ')<br><small>' + (v.tipo || '-') + ' | ' + (v.pais || '-') + ' - ' + (v.region || '') + ' | Bodega: ' + (v.bodega || '-') + ' | Cantidad: ' + v.cantidad + '<br>QR: ' + v.codigo_qr.substring(0, 12) + '</small><br><button onclick="seleccionarVino(' + v.id + ', \\'' + v.nombre.replace(/'/g, "\\'") + '\\', \\'' + (v.bodega || '').replace(/'/g, "\\'") + '\\', ' + v.ano + ', \\'' + v.codigo_qr + '\\', \\'N/A\\', 0, 0)" style="margin-top: 8px; padding: 8px 16px; font-size: 0.85em;">Registrar Salida</button></div>').join('');
                 }
             });
         }
