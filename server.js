@@ -9,7 +9,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Deshabilitar caché
 app.use((req, res, next) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     res.set('Pragma', 'no-cache');
@@ -22,7 +21,6 @@ const pool = new pg.Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// ===== SETUP =====
 app.get('/setup', async (req, res) => {
     try {
         await pool.query('DROP TABLE IF EXISTS movimientos CASCADE');
@@ -51,7 +49,7 @@ app.get('/setup', async (req, res) => {
         const regionesPorPais = {
             'Francia': ['Burdeos', 'Borgoña', 'Alsacia', 'Champagne', 'Provenza', 'Ródano', 'Loire', 'Jura'],
             'Italia': ['Toscana', 'Piamonte', 'Véneto', 'Sicilia', 'Umbría', 'Campania', 'Emilia-Romaña', 'Friuli-Venecia Julia'],
-            'España': ['La Rioja', 'Ribera del Duero', 'Cataluña', 'Andalucía', 'Castilla-La Mancha', 'Navarra', 'Penedès', 'Priorat'],
+            'España': ['La Rioja', 'Ribiera del Duero', 'Cataluña', 'Andalucía', 'Castilla-La Mancha', 'Navarra', 'Penedès', 'Priorat'],
             'Portugal': ['Douro', 'Minho', 'Bairrada', 'Estremadura', 'Alentejo', 'Algarve', 'Dao', 'Colares'],
             'Alemania': ['Mosel', 'Rin', 'Württemberg', 'Baden', 'Alsacia-Lorena', 'Frankenland', 'Mittelrhein', 'Ahr'],
             'Austria': ['Wachau', 'Danubio', 'Estiria', 'Burgenland', 'Viena', 'Baja Austria', 'Weinviertel', 'Kamptal'],
@@ -104,7 +102,6 @@ app.get('/setup', async (req, res) => {
     }
 });
 
-// ===== APIS =====
 app.get('/api/paises', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM paises ORDER BY nombre');
@@ -172,6 +169,24 @@ app.get('/api/vinos', async (req, res) => {
     }
 });
 
+app.get('/api/buscar/:nombre', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT v.id, v.nombre, v.codigo_qr, tv.nombre as tipo, p.nombre as pais, r.nombre as region, v.bodega, v.ano, v.cantidad, v.estado, u.zona_id, u.columna, u.fila
+            FROM vinos v
+            LEFT JOIN tipos tv ON v.tipo_id = tv.id
+            LEFT JOIN paises p ON v.pais_id = p.id
+            LEFT JOIN regiones r ON v.region_id = r.id
+            LEFT JOIN ubicaciones u ON v.ubicacion_id = u.id
+            WHERE LOWER(v.nombre) LIKE LOWER($1) OR v.codigo_qr LIKE $1
+            LIMIT 10
+        `, ['%' + req.params.nombre + '%']);
+        res.json(result.rows);
+    } catch (err) {
+        res.json({ error: err.message });
+    }
+});
+
 app.post('/api/vinos', async (req, res) => {
     const { nombre, tipo_id, pais_id, region_id, bodega, ano, zona_id, columna, fila, cantidad, tipo_movimiento_id } = req.body;
     
@@ -207,14 +222,23 @@ app.post('/api/vinos', async (req, res) => {
     }
 });
 
-// ===== HTML CON DISEÑO PREMIUM =====
+app.post('/api/salida/:vinoId', async (req, res) => {
+    try {
+        await pool.query('INSERT INTO movimientos (vino_id, tipo_movimiento_id) VALUES ($1, $2)', [req.params.vinoId, 2]);
+        await pool.query('UPDATE vinos SET estado = $1 WHERE id = $2', ['salida', req.params.vinoId]);
+        res.json({ ok: true });
+    } catch (err) {
+        res.json({ error: err.message });
+    }
+});
+
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bodegas</title>
+    <title>Wine Collection</title>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Lora:wght@500;600&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -222,6 +246,7 @@ app.get('/', (req, res) => {
         
         .navbar { background: linear-gradient(135deg, rgba(212,165,116,.1) 0%, transparent 100%); border-bottom: 2px solid rgba(212,165,116,.3); padding: 15px 30px; display: flex; align-items: center; gap: 30px; position: sticky; top: 0; z-index: 100; }
         .logo { font-family: 'Playfair Display', serif; font-size: 1.8em; color: #d4a574; font-weight: 700; letter-spacing: 3px; display: flex; align-items: center; }
+        .logo img { height: 60px; margin-right: 15px; }
         
         .container { display: flex; min-height: calc(100vh - 90px); }
         .sidebar { width: 260px; background: linear-gradient(180deg, rgba(212,165,116,.05) 0%, rgba(160,90,90,.03) 100%); border-right: 2px solid rgba(212,165,116,.2); padding: 30px 0; }
@@ -236,21 +261,8 @@ app.get('/', (req, res) => {
         .card-title { font-family: 'Playfair Display', serif; font-size: 1.2em; color: #d4a574; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
         
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; }
-        input, select { 
-            background: #2a2a3e; 
-            border: 1.5px solid rgba(212,165,116,.25); 
-            color: #f5f5f5; 
-            padding: 12px 14px; 
-            border-radius: 8px; 
-            font-family: 'Lora', serif; 
-            font-size: 0.95em; 
-            width: 100%; 
-        }
-        input:focus, select:focus { 
-            outline: 0; 
-            border-color: #d4a574; 
-            box-shadow: 0 0 15px rgba(212,165,116,.2); 
-        }
+        input, select { background: #2a2a3e; border: 1.5px solid rgba(212,165,116,.25); color: #f5f5f5; padding: 12px 14px; border-radius: 8px; font-family: 'Lora', serif; font-size: 0.95em; width: 100%; }
+        input:focus, select:focus { outline: 0; border-color: #d4a574; box-shadow: 0 0 15px rgba(212,165,116,.2); }
         label { display: block; font-size: 0.85em; color: #b8b8b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
         
         .button-group { margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; }
@@ -273,8 +285,11 @@ app.get('/', (req, res) => {
         .msg { color: #d4a574; margin-top: 15px; font-weight: 600; padding: 12px; background: rgba(212,165,116,.1); border-radius: 6px; }
         .error { color: #ff6b6b; background: rgba(255,107,107,.1); }
         
+        .search-results { margin-top: 15px; max-height: 300px; overflow-y: auto; }
+        .search-item { padding: 12px; background: rgba(212,165,116,.08); border: 1px solid rgba(212,165,116,.2); border-radius: 6px; margin-bottom: 10px; cursor: pointer; }
+        .search-item:hover { background: rgba(212,165,116,.12); }
+        
         @media (max-width: 768px) {
-            .container { flex-direction: column; }
             .sidebar { width: 100%; padding: 15px 0; display: flex; gap: 10px; overflow-x: auto; border-right: none; border-bottom: 2px solid rgba(212,165,116,.2); }
             .nav-item { padding: 12px 20px; white-space: nowrap; }
             .main-content { padding: 20px; }
@@ -284,20 +299,21 @@ app.get('/', (req, res) => {
 </head>
 <body>
     <div class="navbar">
-        <div class="logo"><img src="logo_ah.png" alt="Logo" style="height: 60px; margin-right: 15px; vertical-align: middle;">Wine Collection</div>
+        <div class="logo"><img src="logo_ah.png" alt="Logo" onerror="this.style.display='none'">Wine Collection</div>
     </div>
     
     <div class="container">
         <div class="sidebar">
-            <div class="nav-item active" onclick="switchTab('movimientos', this)">Movimientos</div>
+            <div class="nav-item active" onclick="switchTab('entrada', this)">Entrada</div>
+            <div class="nav-item" onclick="switchTab('salida', this)">Salida</div>
             <div class="nav-item" onclick="switchTab('inventario', this)">Inventario</div>
             <div class="nav-item" onclick="switchTab('admin', this)">Administración</div>
         </div>
         
         <div class="main-content">
-            <!-- TAB: MOVIMIENTOS -->
-            <div class="tab-content active" id="tab-movimientos">
-                <div class="section-title">Registrar Botella</div>
+            <!-- TAB: ENTRADA -->
+            <div class="tab-content active" id="tab-entrada">
+                <div class="section-title">Registrar Entrada</div>
                 
                 <div class="card">
                     <div class="card-title">Información del Vino</div>
@@ -320,26 +336,23 @@ app.get('/', (req, res) => {
                         <div><label>Fila</label><input type="number" id="fila" placeholder="1" min="1" max="20"></div>
                     </div>
                     <div class="button-group">
-                        <button onclick="registrar(1)">📥 ENTRADA</button>
-                        <button onclick="registrar(2)">📤 SALIDA</button>
+                        <button onclick="registrar()">📥 GUARDAR ENTRADA</button>
                     </div>
-                    <div class="msg" id="msg"></div>
+                    <div class="msg" id="msg-entrada"></div>
                 </div>
+            </div>
+            
+            <!-- TAB: SALIDA -->
+            <div class="tab-content" id="tab-salida">
+                <div class="section-title">Registrar Salida</div>
                 
-                <div class="section-title" style="margin-top: 40px;">Estadísticas</div>
-                <div class="stats">
-                    <div class="stat-card">
-                        <div class="stat-value" id="total">0</div>
-                        <div class="stat-label">Total Ubicaciones</div>
+                <div class="card">
+                    <div class="card-title">Buscar Botella</div>
+                    <div class="form-grid">
+                        <div><label>Nombre o QR</label><input type="text" id="buscar-nombre" placeholder="Ej: Malbec o código QR" oninput="buscarBotellas()"></div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="disponibles">0</div>
-                        <div class="stat-label">Disponibles</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="ocupadas">0</div>
-                        <div class="stat-label">Ocupadas</div>
-                    </div>
+                    <div class="search-results" id="search-results"></div>
+                    <div class="msg" id="msg-salida"></div>
                 </div>
             </div>
             
@@ -372,6 +385,22 @@ app.get('/', (req, res) => {
                     <div class="card-title">Base de Datos</div>
                     <button onclick="init()">INICIALIZAR BD</button>
                     <div class="msg" id="admin-msg"></div>
+                </div>
+                
+                <div class="section-title" style="margin-top: 40px;">Estadísticas</div>
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="total">0</div>
+                        <div class="stat-label">Total Ubicaciones</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="disponibles">0</div>
+                        <div class="stat-label">Disponibles</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="ocupadas">0</div>
+                        <div class="stat-label">Ocupadas</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -406,7 +435,6 @@ app.get('/', (req, res) => {
             });
             
             cargarEstadisticas();
-            cargarVinos();
         }
         
         function cargarRegiones() {
@@ -443,7 +471,7 @@ app.get('/', (req, res) => {
             });
         }
         
-        function registrar(tipoMovimiento) {
+        function registrar() {
             const n = document.getElementById('nombre').value;
             const t = document.getElementById('tipo').value;
             const p = document.getElementById('pais').value;
@@ -456,28 +484,62 @@ app.get('/', (req, res) => {
             const f = document.getElementById('fila').value;
             
             if (!n || !t || !z || !c || !f) { 
-                document.getElementById('msg').textContent = '✗ Completa todos los campos requeridos';
-                document.getElementById('msg').classList.add('error');
+                document.getElementById('msg-entrada').textContent = '✗ Completa todos los campos requeridos';
+                document.getElementById('msg-entrada').classList.add('error');
                 return; 
             }
             
             fetch('/api/vinos', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre: n, tipo_id: parseInt(t), pais_id: p ? parseInt(p) : null, region_id: r ? parseInt(r) : null, bodega: b, ano: a ? parseInt(a) : null, cantidad: cant ? parseInt(cant) : 1, tipo_movimiento_id: tipoMovimiento, zona_id: parseInt(z), columna: parseInt(c), fila: parseInt(f) })
+                body: JSON.stringify({ nombre: n, tipo_id: parseInt(t), pais_id: p ? parseInt(p) : null, region_id: r ? parseInt(r) : null, bodega: b, ano: a ? parseInt(a) : null, cantidad: cant ? parseInt(cant) : 1, tipo_movimiento_id: 1, zona_id: parseInt(z), columna: parseInt(c), fila: parseInt(f) })
             }).then(r => r.json()).then(d => {
-                const msg = document.getElementById('msg');
+                const msg = document.getElementById('msg-entrada');
                 if (d.ok) { 
-                    msg.textContent = '✓ Botella registrada: ' + d.codigo_qr;
+                    msg.textContent = '✓ Entrada registrada: ' + d.codigo_qr;
                     msg.classList.remove('error');
                     document.getElementById('nombre').value = ''; 
                     document.getElementById('bodega').value = ''; 
                     document.getElementById('ano').value = ''; 
                     document.getElementById('cantidad').value = '1';
                     cargarEstadisticas();
-                    cargarVinos();
                 }
                 else { 
+                    msg.textContent = '✗ Error: ' + d.error;
+                    msg.classList.add('error');
+                }
+            });
+        }
+        
+        function buscarBotellas() {
+            const q = document.getElementById('buscar-nombre').value;
+            if (q.length < 2) {
+                document.getElementById('search-results').innerHTML = '';
+                return;
+            }
+            
+            fetch('/api/buscar/' + encodeURIComponent(q)).then(r => r.json()).then(d => {
+                const res = document.getElementById('search-results');
+                if (d.length === 0) {
+                    res.innerHTML = '<div style="color: #888;">No encontrado</div>';
+                } else {
+                    res.innerHTML = d.map(v => '<div class="search-item" onclick="registrarSalida(' + v.id + ', \'' + v.nombre + '\')">' + v.nombre + ' (' + (v.bodega || '-') + ') - ' + v.ano + '<br><small>QR: ' + v.codigo_qr.substring(0, 8) + '</small></div>').join('');
+                }
+            });
+        }
+        
+        function registrarSalida(vinoId, nombre) {
+            fetch('/api/salida/' + vinoId, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+            .then(r => r.json())
+            .then(d => {
+                const msg = document.getElementById('msg-salida');
+                if (d.ok) {
+                    msg.textContent = '✓ Salida registrada: ' + nombre;
+                    msg.classList.remove('error');
+                    document.getElementById('buscar-nombre').value = '';
+                    document.getElementById('search-results').innerHTML = '';
+                    cargarEstadisticas();
+                } else {
                     msg.textContent = '✗ Error: ' + d.error;
                     msg.classList.add('error');
                 }
