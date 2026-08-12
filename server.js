@@ -220,10 +220,10 @@ app.get('/', (req, res) => {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Lora', serif; background: #08091a; color: #f5f5f5; }
         
-        .navbar { background: linear-gradient(135deg, rgba(212,165,116,.1) 0%, transparent 100%); border-bottom: 2px solid rgba(212,165,116,.3); padding: 20px 30px; display: flex; align-items: center; gap: 30px; position: sticky; top: 0; z-index: 100; }
+        .navbar { background: linear-gradient(135deg, rgba(212,165,116,.1) 0%, transparent 100%); border-bottom: 2px solid rgba(212,165,116,.3); padding: 15px 30px; display: flex; align-items: center; gap: 30px; position: sticky; top: 0; z-index: 100; }
         .logo { font-family: 'Playfair Display', serif; font-size: 1.8em; color: #d4a574; font-weight: 700; letter-spacing: 3px; display: flex; align-items: center; }
         
-        .container { display: flex; min-height: calc(100vh - 75px); }
+        .container { display: flex; min-height: calc(100vh - 90px); }
         .sidebar { width: 260px; background: linear-gradient(180deg, rgba(212,165,116,.05) 0%, rgba(160,90,90,.03) 100%); border-right: 2px solid rgba(212,165,116,.2); padding: 30px 0; }
         .nav-item { padding: 16px 24px; color: #a8a8a8; cursor: pointer; font-size: 0.95em; text-transform: uppercase; letter-spacing: 1.5px; border-left: 4px solid transparent; font-weight: 600; transition: all .3s; }
         .nav-item:hover { color: #d4a574; border-left-color: #d4a574; background: rgba(212,165,116,.08); }
@@ -284,7 +284,7 @@ app.get('/', (req, res) => {
 </head>
 <body>
     <div class="navbar">
-        <div class="logo"><img src="logo_ah.png" alt="Logo" style="height: 45px; margin-right: 12px; vertical-align: middle;">Wine Collection</div>
+        <div class="logo"><img src="logo_ah.png" alt="Logo" style="height: 60px; margin-right: 15px; vertical-align: middle;">Wine Collection</div>
     </div>
     
     <div class="container">
