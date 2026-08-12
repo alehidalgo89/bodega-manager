@@ -163,7 +163,14 @@ app.get('/api/vinos', async (req, res) => {
 
 app.get('/api/buscar/:nombre', async (req, res) => {
     try {
-        const result = await pool.query(`SELECT v.id, v.nombre, v.codigo_qr, v.bodega, v.ano FROM vinos v WHERE LOWER(v.nombre) LIKE LOWER($1) OR v.codigo_qr LIKE $1 LIMIT 10`, ['%' + req.params.nombre + '%']);
+        const result = await pool.query(`
+            SELECT v.id, v.nombre, v.codigo_qr, v.bodega, v.ano, v.estado, z.nombre as zona, u.columna, u.fila
+            FROM vinos v
+            LEFT JOIN ubicaciones u ON v.ubicacion_id = u.id
+            LEFT JOIN zonas z ON u.zona_id = z.id
+            WHERE (LOWER(v.nombre) LIKE LOWER($1) OR v.codigo_qr LIKE $1) AND v.estado = 'activa'
+            LIMIT 10
+        `, ['%' + req.params.nombre + '%']);
         res.json(result.rows);
     } catch (err) {
         res.json({ error: err.message });
@@ -188,6 +195,8 @@ app.post('/api/vinos', async (req, res) => {
 app.post('/api/salida/:vinoId', async (req, res) => {
     try {
         await pool.query('INSERT INTO movimientos (vino_id, tipo_movimiento_id) VALUES ($1, $2)', [req.params.vinoId, 2]);
+        await pool.query('UPDATE vinos SET estado = $1 WHERE id = $2', ['salida', req.params.vinoId]);
+        await pool.query('UPDATE ubicaciones SET disponible = TRUE WHERE id = (SELECT ubicacion_id FROM vinos WHERE id = $1)', [req.params.vinoId]);
         res.json({ ok: true });
     } catch (err) {
         res.json({ error: err.message });
@@ -230,6 +239,10 @@ app.get('/', (req, res) => {
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th { padding: 15px; text-align: left; color: #d4a574; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #d4a574; font-size: 0.9em; }
         td { padding: 12px 15px; border-bottom: 1px solid rgba(212,165,116,.1); color: #d4d4d4; font-size: 0.9em; }
+        #detalles-tabla th { border: 0; color: #a8a8a8; text-transform: none; font-weight: 600; padding: 10px 15px; text-align: left; }
+        #detalles-tabla td { border: 0; padding: 10px 15px; }
+        #detalles-tabla tr { background: rgba(212,165,116,.05); margin-bottom: 5px; }
+        #detalles-tabla tr:hover { background: rgba(212,165,116,.08); }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         .msg { color: #d4a574; margin-top: 15px; font-weight: 600; padding: 12px; background: rgba(212,165,116,.1); border-radius: 6px; }
@@ -285,6 +298,18 @@ app.get('/', (req, res) => {
                     <div class="card-title">Buscar Botella</div>
                     <input type="text" id="buscar" placeholder="Nombre o QR" oninput="buscar()">
                     <div class="search-results" id="search-results"></div>
+                </div>
+                <div class="card" id="card-detalles" style="display: none;">
+                    <div class="card-title">Detalles del Vino</div>
+                    <table id="detalles-tabla" style="border: none;">
+                        <tr><th>Nombre</th><td id="det-nombre"></td></tr>
+                        <tr><th>Bodega</th><td id="det-bodega"></td></tr>
+                        <tr><th>Año</th><td id="det-ano"></td></tr>
+                        <tr><th>QR</th><td id="det-qr"></td></tr>
+                        <tr><th>Ubicación</th><td><strong id="det-zona"></strong> - Col <strong id="det-col"></strong> - Fila <strong id="det-fila"></strong></td></tr>
+                    </table>
+                    <button onclick="confirmarSalida()" style="background: #a05a5a;">✓ CONFIRMAR SALIDA</button>
+                    <button onclick="cancelarSalida()" style="background: rgba(212,165,116,.3); margin-left: 10px;">✗ CANCELAR</button>
                     <div class="msg" id="msg-salida"></div>
                 </div>
             </div>
@@ -360,7 +385,12 @@ app.get('/', (req, res) => {
         function cargarVinos() {
             fetch('/api/vinos').then(r => r.json()).then(d => {
                 const t = document.getElementById('tabla');
-                t.innerHTML = d.map(v => '<tr><td>' + v.nombre + '</td><td>' + (v.tipo || '-') + '</td><td>' + (v.pais || '-') + '</td><td>' + (v.region || '-') + '</td><td>' + (v.bodega || '-') + '</td><td>' + v.ano + '</td><td>' + v.cantidad + '</td></tr>').join('');
+                const activos = d.filter(v => v.estado !== 'salida');
+                if (activos.length === 0) {
+                    t.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #888;">Sin botellas en inventario</td></tr>';
+                } else {
+                    t.innerHTML = activos.map(v => '<tr><td>' + v.nombre + '</td><td>' + (v.tipo || '-') + '</td><td>' + (v.pais || '-') + '</td><td>' + (v.region || '-') + '</td><td>' + (v.bodega || '-') + '</td><td>' + v.ano + '</td><td>' + v.cantidad + '</td></tr>').join('');
+                }
             });
         }
         
@@ -385,21 +415,59 @@ app.get('/', (req, res) => {
             });
         }
         
+        let vinoSeleccionado = null;
+        
         function buscar() {
             const q = document.getElementById('buscar').value;
-            if (q.length < 2) { document.getElementById('search-results').innerHTML = ''; return; }
+            if (q.length < 2) { document.getElementById('search-results').innerHTML = ''; document.getElementById('card-detalles').style.display = 'none'; return; }
             fetch('/api/buscar/' + encodeURIComponent(q)).then(r => r.json()).then(d => {
                 const res = document.getElementById('search-results');
-                res.innerHTML = d.map(v => '<div class="search-item" onclick="salida(' + v.id + ', \\'' + v.nombre + '\\')">' + v.nombre + ' (' + v.ano + ')</div>').join('');
+                if (d.length === 0) {
+                    res.innerHTML = '<div style="color: #888; padding: 10px;">No encontrado</div>';
+                    document.getElementById('card-detalles').style.display = 'none';
+                } else {
+                    res.innerHTML = d.map(v => '<div class="search-item" onclick="seleccionarVino(' + v.id + ', \\'' + v.nombre.replace(/'/g, "\\'") + '\\', \\'' + (v.bodega || '').replace(/'/g, "\\'") + '\\', ' + v.ano + ', \\'' + v.codigo_qr + '\\', \\'' + (v.zona || '') + '\\', ' + v.columna + ', ' + v.fila + ')">' + v.nombre + ' (' + v.ano + ')<br><small>📍 ' + (v.zona || 'Sin ubicación') + ' - Col ' + v.columna + ', Fila ' + v.fila + '</small></div>').join('');
+                }
             });
         }
         
-        function salida(id, nombre) {
-            fetch('/api/salida/' + id, { method: 'POST' }).then(r => r.json()).then(d => {
+        function seleccionarVino(id, nombre, bodega, ano, qr, zona, col, fila) {
+            vinoSeleccionado = id;
+            document.getElementById('det-nombre').textContent = nombre;
+            document.getElementById('det-bodega').textContent = bodega || '-';
+            document.getElementById('det-ano').textContent = ano;
+            document.getElementById('det-qr').textContent = qr;
+            document.getElementById('det-zona').textContent = zona;
+            document.getElementById('det-col').textContent = col;
+            document.getElementById('det-fila').textContent = fila;
+            document.getElementById('card-detalles').style.display = 'block';
+        }
+        
+        function confirmarSalida() {
+            if (!vinoSeleccionado) return;
+            fetch('/api/salida/' + vinoSeleccionado, { method: 'POST' }).then(r => r.json()).then(d => {
                 const msg = document.getElementById('msg-salida');
-                if (d.ok) { msg.textContent = '✓ Salida: ' + nombre; msg.classList.remove('error'); document.getElementById('buscar').value = ''; document.getElementById('search-results').innerHTML = ''; cargarEstadisticas(); }
-                else { msg.textContent = '✗ Error'; msg.classList.add('error'); }
+                if (d.ok) { 
+                    msg.textContent = '✓ Salida registrada correctamente'; 
+                    msg.classList.remove('error');
+                    document.getElementById('buscar').value = '';
+                    document.getElementById('search-results').innerHTML = '';
+                    setTimeout(() => { document.getElementById('card-detalles').style.display = 'none'; }, 1500);
+                    cargarEstadisticas();
+                    vinoSeleccionado = null;
+                }
+                else { 
+                    msg.textContent = '✗ Error: ' + d.error; 
+                    msg.classList.add('error'); 
+                }
             });
+        }
+        
+        function cancelarSalida() {
+            document.getElementById('card-detalles').style.display = 'none';
+            document.getElementById('buscar').value = '';
+            document.getElementById('search-results').innerHTML = '';
+            vinoSeleccionado = null;
         }
         
         function init() {
