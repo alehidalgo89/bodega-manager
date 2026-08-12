@@ -49,7 +49,7 @@ app.get('/setup', async (req, res) => {
         const regionesPorPais = {
             'Francia': ['Burdeos', 'Borgoña', 'Alsacia', 'Champagne', 'Provenza', 'Ródano', 'Loire', 'Jura'],
             'Italia': ['Toscana', 'Piamonte', 'Véneto', 'Sicilia', 'Umbría', 'Campania', 'Emilia-Romaña', 'Friuli-Venecia Julia'],
-            'España': ['La Rioja', 'Ribiera del Duero', 'Cataluña', 'Andalucía', 'Castilla-La Mancha', 'Navarra', 'Penedès', 'Priorat'],
+            'España': ['La Rioja', 'Ribera del Duero', 'Cataluña', 'Andalucía', 'Castilla-La Mancha', 'Navarra', 'Penedès', 'Priorat'],
             'Portugal': ['Douro', 'Minho', 'Bairrada', 'Estremadura', 'Alentejo', 'Algarve', 'Dao', 'Colares'],
             'Alemania': ['Mosel', 'Rin', 'Württemberg', 'Baden', 'Alsacia-Lorena', 'Frankenland', 'Mittelrhein', 'Ahr'],
             'Austria': ['Wachau', 'Danubio', 'Estiria', 'Burgenland', 'Viena', 'Baja Austria', 'Weinviertel', 'Kamptal'],
@@ -80,8 +80,7 @@ app.get('/setup', async (req, res) => {
             }
         }
         
-        await pool.query('INSERT INTO tipos (nombre) VALUES ($1), ($2), ($3), ($4), ($5), ($6)', 
-            ['Tinto', 'Blanco', 'Rosado', 'Espumante', 'Jerez/Fortificado', 'Postre']);
+        await pool.query('INSERT INTO tipos (nombre) VALUES ($1), ($2), ($3), ($4), ($5), ($6)', ['Tinto', 'Blanco', 'Rosado', 'Espumante', 'Jerez/Fortificado', 'Postre']);
         await pool.query('INSERT INTO tipos_movimiento (nombre) VALUES ($1), ($2)', ['Entrada', 'Salida']);
         
         const zonas = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'];
@@ -96,7 +95,7 @@ app.get('/setup', async (req, res) => {
             }
         }
         
-        res.json({ ok: true, message: 'BD inicializada' });
+        res.json({ ok: true });
     } catch (err) {
         res.json({ error: err.message });
     }
@@ -155,14 +154,7 @@ app.get('/api/disponibilidad', async (req, res) => {
 
 app.get('/api/vinos', async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT v.id, v.nombre, v.codigo_qr, tv.nombre as tipo, p.nombre as pais, r.nombre as region, v.bodega, v.ano, v.cantidad, v.estado
-            FROM vinos v
-            LEFT JOIN tipos tv ON v.tipo_id = tv.id
-            LEFT JOIN paises p ON v.pais_id = p.id
-            LEFT JOIN regiones r ON v.region_id = r.id
-            ORDER BY v.id DESC LIMIT 20
-        `);
+        const result = await pool.query(`SELECT v.id, v.nombre, v.codigo_qr, tv.nombre as tipo, p.nombre as pais, r.nombre as region, v.bodega, v.ano, v.cantidad FROM vinos v LEFT JOIN tipos tv ON v.tipo_id = tv.id LEFT JOIN paises p ON v.pais_id = p.id LEFT JOIN regiones r ON v.region_id = r.id ORDER BY v.id DESC LIMIT 20`);
         res.json(result.rows);
     } catch (err) {
         res.json({ error: err.message });
@@ -171,16 +163,7 @@ app.get('/api/vinos', async (req, res) => {
 
 app.get('/api/buscar/:nombre', async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT v.id, v.nombre, v.codigo_qr, tv.nombre as tipo, p.nombre as pais, r.nombre as region, v.bodega, v.ano, v.cantidad, v.estado, u.zona_id, u.columna, u.fila
-            FROM vinos v
-            LEFT JOIN tipos tv ON v.tipo_id = tv.id
-            LEFT JOIN paises p ON v.pais_id = p.id
-            LEFT JOIN regiones r ON v.region_id = r.id
-            LEFT JOIN ubicaciones u ON v.ubicacion_id = u.id
-            WHERE LOWER(v.nombre) LIKE LOWER($1) OR v.codigo_qr LIKE $1
-            LIMIT 10
-        `, ['%' + req.params.nombre + '%']);
+        const result = await pool.query(`SELECT v.id, v.nombre, v.codigo_qr, v.bodega, v.ano FROM vinos v WHERE LOWER(v.nombre) LIKE LOWER($1) OR v.codigo_qr LIKE $1 LIMIT 10`, ['%' + req.params.nombre + '%']);
         res.json(result.rows);
     } catch (err) {
         res.json({ error: err.message });
@@ -188,34 +171,14 @@ app.get('/api/buscar/:nombre', async (req, res) => {
 });
 
 app.post('/api/vinos', async (req, res) => {
-    const { nombre, tipo_id, pais_id, region_id, bodega, ano, zona_id, columna, fila, cantidad, tipo_movimiento_id } = req.body;
-    
-    if (!nombre || !tipo_id || !zona_id || !columna || !fila) {
-        return res.json({ error: 'Faltan datos requeridos' });
-    }
-    
+    const { nombre, tipo_id, pais_id, region_id, bodega, ano, zona_id, columna, fila, cantidad } = req.body;
+    if (!nombre || !tipo_id || !zona_id || !columna || !fila) return res.json({ error: 'Faltan datos' });
     try {
-        const ubicRes = await pool.query(
-            'SELECT id FROM ubicaciones WHERE zona_id = $1 AND columna = $2 AND fila = $3 AND disponible = TRUE',
-            [zona_id, columna, fila]
-        );
-        
-        if (ubicRes.rows.length === 0) {
-            return res.json({ error: 'Ubicación no disponible' });
-        }
-        
+        const ubicRes = await pool.query('SELECT id FROM ubicaciones WHERE zona_id = $1 AND columna = $2 AND fila = $3 AND disponible = TRUE', [zona_id, columna, fila]);
+        if (ubicRes.rows.length === 0) return res.json({ error: 'Ubicación no disponible' });
         const codigo_qr = crypto.randomBytes(8).toString('hex');
-        const vinRes = await pool.query(
-            'INSERT INTO vinos (codigo_qr, nombre, tipo_id, pais_id, region_id, bodega, ano, ubicacion_id, cantidad) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
-            [codigo_qr, nombre, tipo_id, pais_id || null, region_id || null, bodega || 'Sin especificar', ano || new Date().getFullYear(), ubicRes.rows[0].id, cantidad || 1]
-        );
-        
+        const vinRes = await pool.query('INSERT INTO vinos (codigo_qr, nombre, tipo_id, pais_id, region_id, bodega, ano, ubicacion_id, cantidad) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id', [codigo_qr, nombre, tipo_id, pais_id || null, region_id || null, bodega || 'Sin especificar', ano || new Date().getFullYear(), ubicRes.rows[0].id, cantidad || 1]);
         await pool.query('UPDATE ubicaciones SET disponible = FALSE WHERE id = $1', [ubicRes.rows[0].id]);
-        
-        if (tipo_movimiento_id) {
-            await pool.query('INSERT INTO movimientos (vino_id, tipo_movimiento_id) VALUES ($1, $2)', [vinRes.rows[0].id, tipo_movimiento_id]);
-        }
-        
         res.json({ ok: true, vino_id: vinRes.rows[0].id, codigo_qr });
     } catch (err) {
         res.json({ error: err.message });
@@ -225,7 +188,6 @@ app.post('/api/vinos', async (req, res) => {
 app.post('/api/salida/:vinoId', async (req, res) => {
     try {
         await pool.query('INSERT INTO movimientos (vino_id, tipo_movimiento_id) VALUES ($1, $2)', [req.params.vinoId, 2]);
-        await pool.query('UPDATE vinos SET estado = $1 WHERE id = $2', ['salida', req.params.vinoId]);
         res.json({ ok: true });
     } catch (err) {
         res.json({ error: err.message });
@@ -243,58 +205,38 @@ app.get('/', (req, res) => {
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Lora', serif; background: #08091a; color: #f5f5f5; }
-        
-        .navbar { background: linear-gradient(135deg, rgba(212,165,116,.1) 0%, transparent 100%); border-bottom: 2px solid rgba(212,165,116,.3); padding: 15px 30px; display: flex; align-items: center; gap: 30px; position: sticky; top: 0; z-index: 100; }
+        .navbar { background: linear-gradient(135deg, rgba(212,165,116,.1) 0%, transparent 100%); border-bottom: 2px solid rgba(212,165,116,.3); padding: 15px 30px; display: flex; align-items: center; gap: 30px; }
         .logo { font-family: 'Playfair Display', serif; font-size: 1.8em; color: #d4a574; font-weight: 700; letter-spacing: 3px; display: flex; align-items: center; }
         .logo img { height: 60px; margin-right: 15px; }
-        
         .container { display: flex; min-height: calc(100vh - 90px); }
         .sidebar { width: 260px; background: linear-gradient(180deg, rgba(212,165,116,.05) 0%, rgba(160,90,90,.03) 100%); border-right: 2px solid rgba(212,165,116,.2); padding: 30px 0; }
         .nav-item { padding: 16px 24px; color: #a8a8a8; cursor: pointer; font-size: 0.95em; text-transform: uppercase; letter-spacing: 1.5px; border-left: 4px solid transparent; font-weight: 600; transition: all .3s; }
         .nav-item:hover { color: #d4a574; border-left-color: #d4a574; background: rgba(212,165,116,.08); }
         .nav-item.active { color: #d4a574; border-left-color: #d4a574; background: rgba(212,165,116,.12); }
-        
         .main-content { flex: 1; padding: 40px; overflow-y: auto; }
-        .section-title { font-family: 'Playfair Display', serif; font-size: 2.2em; color: #d4a574; margin-bottom: 30px; font-weight: 700; letter-spacing: 1px; }
-        
+        .section-title { font-family: 'Playfair Display', serif; font-size: 2.2em; color: #d4a574; margin-bottom: 30px; font-weight: 700; }
         .card { background: rgba(212,165,116,.05); border: 1.5px solid rgba(212,165,116,.2); border-radius: 12px; padding: 30px; margin-bottom: 25px; }
         .card-title { font-family: 'Playfair Display', serif; font-size: 1.2em; color: #d4a574; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
-        
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; }
         input, select { background: #2a2a3e; border: 1.5px solid rgba(212,165,116,.25); color: #f5f5f5; padding: 12px 14px; border-radius: 8px; font-family: 'Lora', serif; font-size: 0.95em; width: 100%; }
         input:focus, select:focus { outline: 0; border-color: #d4a574; box-shadow: 0 0 15px rgba(212,165,116,.2); }
         label { display: block; font-size: 0.85em; color: #b8b8b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
-        
-        .button-group { margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; }
-        button { background: linear-gradient(135deg, #d4a574 0%, #a05a5a 100%); color: #000; border: 0; padding: 14px 28px; border-radius: 8px; font-family: 'Lora', serif; font-size: 0.95em; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 1.2px; transition: all .3s; }
+        button { background: linear-gradient(135deg, #d4a574 0%, #a05a5a 100%); color: #000; border: 0; padding: 14px 28px; border-radius: 8px; font-family: 'Lora', serif; font-size: 0.95em; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: 1.2px; transition: all .3s; margin-top: 20px; }
         button:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(212,165,116,.3); }
-        
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 30px 0; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 30px 0; }
         .stat-card { background: rgba(212,165,116,.08); border: 1.5px solid rgba(212,165,116,.2); border-radius: 12px; padding: 25px; text-align: center; }
         .stat-value { font-family: 'Playfair Display', serif; font-size: 2.8em; color: #d4a574; margin-bottom: 10px; font-weight: 700; }
         .stat-label { font-size: 0.85em; color: #a8a8a8; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
-        
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { padding: 15px; text-align: left; color: #d4a574; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #d4a574; font-size: 0.9em; }
+        th { padding: 15px; text-align: left; color: #d4a574; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #d4a574; font-size: 0.9em; }
         td { padding: 12px 15px; border-bottom: 1px solid rgba(212,165,116,.1); color: #d4d4d4; font-size: 0.9em; }
-        tr:hover { background: rgba(212,165,116,.05); }
-        
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-        
         .msg { color: #d4a574; margin-top: 15px; font-weight: 600; padding: 12px; background: rgba(212,165,116,.1); border-radius: 6px; }
         .error { color: #ff6b6b; background: rgba(255,107,107,.1); }
-        
         .search-results { margin-top: 15px; max-height: 300px; overflow-y: auto; }
         .search-item { padding: 12px; background: rgba(212,165,116,.08); border: 1px solid rgba(212,165,116,.2); border-radius: 6px; margin-bottom: 10px; cursor: pointer; }
         .search-item:hover { background: rgba(212,165,116,.12); }
-        
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; padding: 15px 0; display: flex; gap: 10px; overflow-x: auto; border-right: none; border-bottom: 2px solid rgba(212,165,116,.2); }
-            .nav-item { padding: 12px 20px; white-space: nowrap; }
-            .main-content { padding: 20px; }
-            .form-grid { grid-template-columns: 1fr; }
-        }
     </style>
 </head>
 <body>
@@ -311,96 +253,59 @@ app.get('/', (req, res) => {
         </div>
         
         <div class="main-content">
-            <!-- TAB: ENTRADA -->
             <div class="tab-content active" id="tab-entrada">
                 <div class="section-title">Registrar Entrada</div>
-                
                 <div class="card">
                     <div class="card-title">Información del Vino</div>
                     <div class="form-grid">
-                        <div><label>Nombre</label><input type="text" id="nombre" placeholder="Malbec Reserve"></div>
-                        <div><label>Tipo</label><select id="tipo"><option>-- Seleccionar --</option></select></div>
-                        <div><label>País</label><select id="pais" onchange="cargarRegiones()"><option>-- Seleccionar --</option></select></div>
-                        <div><label>Región</label><select id="region"><option>-- Seleccionar País --</option></select></div>
-                        <div><label>Bodega</label><input type="text" id="bodega" placeholder="Bodega"></div>
-                        <div><label>Año</label><input type="number" id="ano" placeholder="2020" min="1900" max="2099"></div>
-                        <div><label>Cantidad</label><input type="number" id="cantidad" placeholder="1" min="1" value="1"></div>
+                        <div><label>Nombre</label><input type="text" id="nombre" placeholder="Malbec"></div>
+                        <div><label>Tipo</label><select id="tipo"><option>--</option></select></div>
+                        <div><label>País</label><select id="pais" onchange="cargarRegiones()"><option>--</option></select></div>
+                        <div><label>Región</label><select id="region"><option>--</option></select></div>
+                        <div><label>Bodega</label><input type="text" id="bodega"></div>
+                        <div><label>Año</label><input type="number" id="ano" value="2020"></div>
+                        <div><label>Cantidad</label><input type="number" id="cantidad" value="1"></div>
                     </div>
                 </div>
-                
                 <div class="card">
-                    <div class="card-title">Ubicación en Bodega</div>
+                    <div class="card-title">Ubicación</div>
                     <div class="form-grid">
-                        <div><label>Zona</label><select id="zona"><option>-- Seleccionar --</option></select></div>
-                        <div><label>Columna</label><input type="number" id="columna" placeholder="1" min="1"></div>
-                        <div><label>Fila</label><input type="number" id="fila" placeholder="1" min="1" max="20"></div>
+                        <div><label>Zona</label><select id="zona"><option>--</option></select></div>
+                        <div><label>Columna</label><input type="number" id="columna" placeholder="1"></div>
+                        <div><label>Fila</label><input type="number" id="fila" placeholder="1"></div>
                     </div>
-                    <div class="button-group">
-                        <button onclick="registrar()">📥 GUARDAR ENTRADA</button>
-                    </div>
+                    <button onclick="registrar()">📥 GUARDAR ENTRADA</button>
                     <div class="msg" id="msg-entrada"></div>
                 </div>
             </div>
             
-            <!-- TAB: SALIDA -->
             <div class="tab-content" id="tab-salida">
                 <div class="section-title">Registrar Salida</div>
-                
                 <div class="card">
                     <div class="card-title">Buscar Botella</div>
-                    <div class="form-grid">
-                        <div><label>Nombre o QR</label><input type="text" id="buscar-nombre" placeholder="Ej: Malbec o código QR" oninput="buscarBotellas()"></div>
-                    </div>
+                    <input type="text" id="buscar" placeholder="Nombre o QR" oninput="buscar()">
                     <div class="search-results" id="search-results"></div>
                     <div class="msg" id="msg-salida"></div>
                 </div>
             </div>
             
-            <!-- TAB: INVENTARIO -->
             <div class="tab-content" id="tab-inventario">
                 <div class="section-title">Inventario</div>
                 <div class="card">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Nombre</th>
-                                <th>Tipo</th>
-                                <th>País</th>
-                                <th>Región</th>
-                                <th>Bodega</th>
-                                <th>Año</th>
-                                <th>Cantidad</th>
-                                <th>QR</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabla"></tbody>
-                    </table>
+                    <table><thead><tr><th>Nombre</th><th>Tipo</th><th>País</th><th>Región</th><th>Bodega</th><th>Año</th><th>Cantidad</th></tr></thead><tbody id="tabla"></tbody></table>
                 </div>
             </div>
             
-            <!-- TAB: ADMIN -->
             <div class="tab-content" id="tab-admin">
                 <div class="section-title">Administración</div>
                 <div class="card">
-                    <div class="card-title">Base de Datos</div>
                     <button onclick="init()">INICIALIZAR BD</button>
-                    <div class="msg" id="admin-msg"></div>
+                    <div class="msg" id="msg-admin"></div>
                 </div>
-                
-                <div class="section-title" style="margin-top: 40px;">Estadísticas</div>
                 <div class="stats">
-                    <div class="stat-card">
-                        <div class="stat-value" id="total">0</div>
-                        <div class="stat-label">Total Ubicaciones</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="disponibles">0</div>
-                        <div class="stat-label">Disponibles</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="ocupadas">0</div>
-                        <div class="stat-label">Ocupadas</div>
-                    </div>
+                    <div class="stat-card"><div class="stat-value" id="total">0</div><div class="stat-label">Total</div></div>
+                    <div class="stat-card"><div class="stat-value" id="disponibles">0</div><div class="stat-label">Disponibles</div></div>
+                    <div class="stat-card"><div class="stat-value" id="ocupadas">0</div><div class="stat-label">Ocupadas</div></div>
                 </div>
             </div>
         </div>
@@ -417,38 +322,30 @@ app.get('/', (req, res) => {
         
         function cargar() {
             fetch('/api/tipos').then(r => r.json()).then(d => {
-                const sel = document.getElementById('tipo');
-                sel.innerHTML = '<option>-- Seleccionar --</option>';
-                d.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.text = t.nombre; sel.appendChild(o); });
+                const s = document.getElementById('tipo');
+                s.innerHTML = '<option>--</option>';
+                d.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.text = t.nombre; s.appendChild(o); });
             });
-            
             fetch('/api/paises').then(r => r.json()).then(d => {
-                const sel = document.getElementById('pais');
-                sel.innerHTML = '<option>-- Seleccionar --</option>';
-                d.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.text = p.nombre; sel.appendChild(o); });
+                const s = document.getElementById('pais');
+                s.innerHTML = '<option>--</option>';
+                d.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.text = p.nombre; s.appendChild(o); });
             });
-            
             fetch('/api/zonas').then(r => r.json()).then(d => {
-                const sel = document.getElementById('zona');
-                sel.innerHTML = '<option>-- Seleccionar --</option>';
-                d.forEach(z => { const o = document.createElement('option'); o.value = z.id; o.text = z.nombre; sel.appendChild(o); });
+                const s = document.getElementById('zona');
+                s.innerHTML = '<option>--</option>';
+                d.forEach(z => { const o = document.createElement('option'); o.value = z.id; o.text = z.nombre; s.appendChild(o); });
             });
-            
             cargarEstadisticas();
         }
         
         function cargarRegiones() {
-            const paisId = document.getElementById('pais').value;
-            const sel = document.getElementById('region');
-            
-            if (!paisId) {
-                sel.innerHTML = '<option>-- Seleccionar País --</option>';
-                return;
-            }
-            
-            fetch('/api/regiones/' + paisId).then(r => r.json()).then(d => {
-                sel.innerHTML = '<option>-- Seleccionar --</option>';
-                d.forEach(r => { const o = document.createElement('option'); o.value = r.id; o.text = r.nombre; sel.appendChild(o); });
+            const id = document.getElementById('pais').value;
+            const s = document.getElementById('region');
+            if (!id) { s.innerHTML = '<option>--</option>'; return; }
+            fetch('/api/regiones/' + id).then(r => r.json()).then(d => {
+                s.innerHTML = '<option>--</option>';
+                d.forEach(r => { const o = document.createElement('option'); o.value = r.id; o.text = r.nombre; s.appendChild(o); });
             });
         }
         
@@ -463,106 +360,57 @@ app.get('/', (req, res) => {
         function cargarVinos() {
             fetch('/api/vinos').then(r => r.json()).then(d => {
                 const t = document.getElementById('tabla');
-                if (d.length === 0) {
-                    t.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">Sin botellas registradas</td></tr>';
-                } else {
-                    t.innerHTML = d.map(v => '<tr><td>' + v.nombre + '</td><td>' + (v.tipo || '-') + '</td><td>' + (v.pais || '-') + '</td><td>' + (v.region || '-') + '</td><td>' + (v.bodega || '-') + '</td><td>' + v.ano + '</td><td style="text-align: center;">' + v.cantidad + '</td><td>' + v.codigo_qr.substring(0, 8) + '</td></tr>').join('');
-                }
+                t.innerHTML = d.map(v => '<tr><td>' + v.nombre + '</td><td>' + (v.tipo || '-') + '</td><td>' + (v.pais || '-') + '</td><td>' + (v.region || '-') + '</td><td>' + (v.bodega || '-') + '</td><td>' + v.ano + '</td><td>' + v.cantidad + '</td></tr>').join('');
             });
         }
         
         function registrar() {
             const n = document.getElementById('nombre').value;
             const t = document.getElementById('tipo').value;
-            const p = document.getElementById('pais').value;
-            const r = document.getElementById('region').value;
-            const b = document.getElementById('bodega').value;
-            const a = document.getElementById('ano').value;
-            const cant = document.getElementById('cantidad').value;
             const z = document.getElementById('zona').value;
-            const c = document.getElementById('columna').value;
-            const f = document.getElementById('fila').value;
-            
-            if (!n || !t || !z || !c || !f) { 
-                document.getElementById('msg-entrada').textContent = '✗ Completa todos los campos requeridos';
-                document.getElementById('msg-entrada').classList.add('error');
-                return; 
-            }
-            
+            if (!n || !t || !z) { alert('Faltan datos'); return; }
             fetch('/api/vinos', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ nombre: n, tipo_id: parseInt(t), pais_id: p ? parseInt(p) : null, region_id: r ? parseInt(r) : null, bodega: b, ano: a ? parseInt(a) : null, cantidad: cant ? parseInt(cant) : 1, tipo_movimiento_id: 1, zona_id: parseInt(z), columna: parseInt(c), fila: parseInt(f) })
+                body: JSON.stringify({
+                    nombre: n, tipo_id: parseInt(t), pais_id: document.getElementById('pais').value || null,
+                    region_id: document.getElementById('region').value || null, bodega: document.getElementById('bodega').value,
+                    ano: parseInt(document.getElementById('ano').value), cantidad: parseInt(document.getElementById('cantidad').value),
+                    zona_id: parseInt(z), columna: parseInt(document.getElementById('columna').value), fila: parseInt(document.getElementById('fila').value)
+                })
             }).then(r => r.json()).then(d => {
                 const msg = document.getElementById('msg-entrada');
-                if (d.ok) { 
-                    msg.textContent = '✓ Entrada registrada: ' + d.codigo_qr;
-                    msg.classList.remove('error');
-                    document.getElementById('nombre').value = ''; 
-                    document.getElementById('bodega').value = ''; 
-                    document.getElementById('ano').value = ''; 
-                    document.getElementById('cantidad').value = '1';
-                    cargarEstadisticas();
-                }
-                else { 
-                    msg.textContent = '✗ Error: ' + d.error;
-                    msg.classList.add('error');
-                }
+                if (d.ok) { msg.textContent = '✓ Registrado'; msg.classList.remove('error'); document.getElementById('nombre').value = ''; cargarEstadisticas(); }
+                else { msg.textContent = '✗ Error: ' + d.error; msg.classList.add('error'); }
             });
         }
         
-        function buscarBotellas() {
-            const q = document.getElementById('buscar-nombre').value;
-            if (q.length < 2) {
-                document.getElementById('search-results').innerHTML = '';
-                return;
-            }
-            
+        function buscar() {
+            const q = document.getElementById('buscar').value;
+            if (q.length < 2) { document.getElementById('search-results').innerHTML = ''; return; }
             fetch('/api/buscar/' + encodeURIComponent(q)).then(r => r.json()).then(d => {
                 const res = document.getElementById('search-results');
-                if (d.length === 0) {
-                    res.innerHTML = '<div style="color: #888;">No encontrado</div>';
-                } else {
-                    res.innerHTML = d.map(v => '<div class="search-item" onclick="registrarSalida(' + v.id + ', \'' + v.nombre + '\')">' + v.nombre + ' (' + (v.bodega || '-') + ') - ' + v.ano + '<br><small>QR: ' + v.codigo_qr.substring(0, 8) + '</small></div>').join('');
-                }
+                res.innerHTML = d.map(v => '<div class="search-item" onclick="salida(' + v.id + ', \\'' + v.nombre + '\\')">' + v.nombre + ' (' + v.ano + ')</div>').join('');
             });
         }
         
-        function registrarSalida(vinoId, nombre) {
-            fetch('/api/salida/' + vinoId, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
-            .then(r => r.json())
-            .then(d => {
+        function salida(id, nombre) {
+            fetch('/api/salida/' + id, { method: 'POST' }).then(r => r.json()).then(d => {
                 const msg = document.getElementById('msg-salida');
-                if (d.ok) {
-                    msg.textContent = '✓ Salida registrada: ' + nombre;
-                    msg.classList.remove('error');
-                    document.getElementById('buscar-nombre').value = '';
-                    document.getElementById('search-results').innerHTML = '';
-                    cargarEstadisticas();
-                } else {
-                    msg.textContent = '✗ Error: ' + d.error;
-                    msg.classList.add('error');
-                }
+                if (d.ok) { msg.textContent = '✓ Salida: ' + nombre; msg.classList.remove('error'); document.getElementById('buscar').value = ''; document.getElementById('search-results').innerHTML = ''; cargarEstadisticas(); }
+                else { msg.textContent = '✗ Error'; msg.classList.add('error'); }
             });
         }
         
         function init() {
             fetch('/setup').then(r => r.json()).then(d => {
-                const msg = document.getElementById('admin-msg');
-                if (d.ok) { 
-                    msg.textContent = '✓ BD inicializada correctamente'; 
-                    msg.classList.remove('error');
-                    setTimeout(cargar, 500); 
-                }
-                else { 
-                    msg.textContent = '✗ Error: ' + d.error;
-                    msg.classList.add('error');
-                }
+                const msg = document.getElementById('msg-admin');
+                if (d.ok) { msg.textContent = '✓ Inicializado'; msg.classList.remove('error'); setTimeout(cargar, 500); }
+                else { msg.textContent = '✗ Error'; msg.classList.add('error'); }
             });
         }
         
         cargar();
-        setInterval(cargarEstadisticas, 5000);
     </script>
 </body>
 </html>`);
