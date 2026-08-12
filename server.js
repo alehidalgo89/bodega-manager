@@ -235,9 +235,21 @@ app.get('/', (req, res) => {
         .card-title { font-family: 'Playfair Display', serif; font-size: 1.2em; color: #d4a574; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
         
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; }
-        input, select { background: rgba(255,255,255,.05); border: 1.5px solid rgba(212,165,116,.25); color: #f5f5f5; padding: 12px 14px; border-radius: 8px; font-family: 'Lora', serif; font-size: 0.95em; width: 100%; transition: all .3s; appearance: none; }
-        select { background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d4a574' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; background-size: 20px; padding-right: 35px; }
-        input:focus, select:focus { outline: 0; border-color: #d4a574; background-color: rgba(212,165,116,.1); box-shadow: 0 0 15px rgba(212,165,116,.2); }
+        input, select { 
+            background: #2a2a3e; 
+            border: 1.5px solid rgba(212,165,116,.25); 
+            color: #f5f5f5; 
+            padding: 12px 14px; 
+            border-radius: 8px; 
+            font-family: 'Lora', serif; 
+            font-size: 0.95em; 
+            width: 100%; 
+        }
+        input:focus, select:focus { 
+            outline: 0; 
+            border-color: #d4a574; 
+            box-shadow: 0 0 15px rgba(212,165,116,.2); 
+        }
         label { display: block; font-size: 0.85em; color: #b8b8b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
         
         .button-group { margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; }
@@ -271,7 +283,7 @@ app.get('/', (req, res) => {
 </head>
 <body>
     <div class="navbar">
-        <div class="logo"><img src="logo_ah.png" alt="Logo" style="height: 45px; margin-right: 12px; vertical-align: middle; onerror='this.style.display=&#34;none&#34;;'">Wine Collection</div>
+        <div class="logo">🍷 Wine Collection</div>
     </div>
     
     <div class="container">
