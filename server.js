@@ -7,6 +7,7 @@ require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static(__dirname));
 
 // Deshabilitar caché
 app.use((req, res, next) => {
@@ -283,7 +284,7 @@ app.get('/', (req, res) => {
 </head>
 <body>
     <div class="navbar">
-        <div class="logo">🍷 Wine Collection</div>
+        <div class="logo"><img src="logo_ah.png" alt="Logo" style="height: 45px; margin-right: 12px; vertical-align: middle;">Wine Collection</div>
     </div>
     
     <div class="container">
